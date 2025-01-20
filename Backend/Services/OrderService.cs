@@ -1,6 +1,6 @@
-using Microsoft.EntityFrameworkCore;
-using System.Collections.Generic;
+using System;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 public class OrderService : IOrderService
 {
@@ -11,31 +11,47 @@ public class OrderService : IOrderService
         _context = context;
     }
 
-    public async Task<IEnumerable<Order>> GetAllOrders()
+    public async Task CreateOrder(Order order)
     {
-        if (_context.Orders == null)
-        {
-            throw new InvalidOperationException("DbSet<Order> is null.");
-        }
-        return await _context.Orders.ToListAsync();
-    }
+        order.OrderDate = DateTime.UtcNow;
 
-    public async Task<Order?> GetOrderById(Guid id) // Изменено на Task<Order?>
-    {
-        if (_context.Orders == null)
+        foreach (var item in order.Items)
         {
-            throw new InvalidOperationException("DbSet<Order> is null.");
+            var product = await _context.Products.FindAsync(item.ProductId);
+            if (product == null || product.Stock < item.Quantity)
+            {
+                throw new InvalidOperationException("Product is not available or insufficient stock.");
+            }
+            product.Stock -= item.Quantity;
         }
-        return await _context.Orders.FindAsync(id);
-    }
 
-    public async Task AddOrder(Order order)
-    {
-        if (_context.Orders == null)
-        {
-            throw new InvalidOperationException("DbSet<Order> is null.");
-        }
+        order.CalculateTotalAmount();
         _context.Orders.Add(order);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task ApplyDiscount(Guid orderId, Discount discount)
+    {
+        var order = await _context.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Discounts)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+
+        if (order == null)
+        {
+            throw new InvalidOperationException("Order not found.");
+        }
+
+        order.Discounts.Add(discount);
+        order.CalculateTotalAmount();
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task<Order?> GetOrderById(Guid id) // Реализация метода
+    {
+        return await _context.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Discounts)
+            .FirstOrDefaultAsync(o => o.Id == id);
     }
 }

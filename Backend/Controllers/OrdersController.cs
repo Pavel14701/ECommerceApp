@@ -1,9 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections.Generic;
+using System;
 using System.Threading.Tasks;
 
-[ApiController]
 [Route("api/[controller]")]
+[ApiController]
 public class OrdersController : ControllerBase
 {
     private readonly IOrderService _orderService;
@@ -13,15 +14,39 @@ public class OrdersController : ControllerBase
         _orderService = orderService;
     }
 
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Order>>> GetOrders()
+    [HttpPost]
+    [Authorize]
+    public async Task<IActionResult> CreateOrder([FromBody] Order order)
     {
-        var orders = await _orderService.GetAllOrders();
-        return Ok(orders);
+        try
+        {
+            await _orderService.CreateOrder(order);
+            return CreatedAtAction(nameof(GetOrderById), new { id = order.Id }, order);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
+    [HttpPost("{id}/apply-discount")]
+    [Authorize]
+    public async Task<IActionResult> ApplyDiscount(Guid id, [FromBody] Discount discount)
+    {
+        try
+        {
+            await _orderService.ApplyDiscount(id, discount);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<Order>> GetOrder(Guid id)
+    [Authorize]
+    public async Task<IActionResult> GetOrderById(Guid id)
     {
         var order = await _orderService.GetOrderById(id);
         if (order == null)
@@ -29,12 +54,5 @@ public class OrdersController : ControllerBase
             return NotFound();
         }
         return Ok(order);
-    }
-
-    [HttpPost]
-    public async Task<ActionResult<Order>> CreateOrder(Order order)
-    {
-        await _orderService.AddOrder(order);
-        return CreatedAtAction(nameof(GetOrder), new { id = order.Id }, order);
     }
 }

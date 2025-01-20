@@ -3,7 +3,18 @@ using System.Threading.Tasks;
 
 public interface IProductService
 {
-    Task<IEnumerable<Product>> GetAllProducts();
+    Task<IEnumerable<Product>> GetAllProducts(int pageNumber, int pageSize);
+    Task<IEnumerable<Product>> GetProductsByCategory(string category, int pageNumber, int pageSize);
+    Task<IEnumerable<Product>> GetProductsByName(string name, int pageNumber, int pageSize);
     Task<Product?> GetProductById(Guid id);
     Task AddProduct(Product product);
+    Task UpdateProduct(Product product);
+    Task DeleteProduct(Guid id);
+    Task AddImageToProduct(Guid productId, Images image);
+    Task RemoveImageFromProduct(Guid productId, Guid imageId);
+    Task UpdateProductName(Guid id, string name);
+    Task UpdateProductCategory(Guid id, string category);
+    Task UpdateProductPrice(Guid id, decimal price);
+    Task UpdateProductStock(Guid id, int stock);
+    Task UpdateProductDescription(Guid id, string description);
 }
