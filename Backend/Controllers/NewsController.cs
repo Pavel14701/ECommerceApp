@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 [Route("api/[controller]")]
@@ -63,36 +63,40 @@ public class NewsController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("{id}/images")]
+    [HttpPost("{id}/upload")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> AddImageToNews(Guid id, [FromBody] Images image)
+    public async Task<IActionResult> UploadImage(Guid id, [FromForm] IFormFile file)
     {
-        await _newsService.AddImageToNews(id, image);
-        return NoContent();
+        var image = await _newsService.UploadImage(id, file);
+        if (image == null)
+        {
+            return BadRequest("Failed to upload image.");
+        }
+        return Ok(image);
     }
 
     [HttpDelete("{id}/images/{imageId}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> RemoveImageFromNews(Guid id, Guid imageId)
+    public async Task<IActionResult> DeleteImage(Guid id, Guid imageId)
     {
-        await _newsService.RemoveImageFromNews(id, imageId);
+        var result = await _newsService.DeleteImage(id, imageId);
+        if (!result)
+        {
+            return BadRequest("Failed to delete image.");
+        }
         return NoContent();
     }
 
-    [HttpPost("{id}/content")]
+    [HttpPut("{id}/images/{imageId}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> AddContentToNews(Guid id, [FromBody] Content content)
+    public async Task<IActionResult> UpdateImage(Guid id, Guid imageId, [FromForm] IFormFile file)
     {
-        await _newsService.AddContentToNews(id, content);
-        return NoContent();
-    }
-
-    [HttpDelete("{id}/content/{contentId}")]
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> RemoveContentFromNews(Guid id, Guid contentId)
-    {
-        await _newsService.RemoveContentFromNews(id, contentId);
-        return NoContent();
+        var image = await _newsService.UpdateImage(id, imageId, file);
+        if (image == null)
+        {
+            return BadRequest("Failed to update image.");
+        }
+        return Ok(image);
     }
 
     [HttpPut("{id}/title")]

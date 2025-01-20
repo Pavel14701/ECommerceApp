@@ -1,6 +1,7 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 
 [Route("api/[controller]")]
@@ -32,7 +33,22 @@ public class ProductsController : ControllerBase
         return Ok(product);
     }
 
+    [HttpGet("category/{category}")]
+    public async Task<IActionResult> GetProductsByCategory(string category, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+    {
+        var products = await _productService.GetProductsByCategory(category, pageNumber, pageSize);
+        return Ok(products);
+    }
+
+    [HttpGet("search/{name}")]
+    public async Task<IActionResult> GetProductsByName(string name, [FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
+    {
+        var products = await _productService.GetProductsByName(name, pageNumber, pageSize);
+        return Ok(products);
+    }
+
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateProduct([FromBody] Product product)
     {
         await _productService.AddProduct(product);
@@ -40,6 +56,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] Product product)
     {
         if (id != product.Id)
@@ -52,27 +69,51 @@ public class ProductsController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteProduct(Guid id)
     {
         await _productService.DeleteProduct(id);
         return NoContent();
     }
 
-    [HttpPost("{id}/images")]
-    public async Task<IActionResult> AddImageToProduct(Guid id, [FromBody] Images image)
+    [HttpPost("{id}/upload")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UploadImage(Guid id, [FromForm] IFormFile file)
     {
-        await _productService.AddImageToProduct(id, image);
-        return NoContent();
+        var image = await _productService.UploadImage(id, file);
+        if (image == null)
+        {
+            return BadRequest("Failed to upload image.");
+        }
+        return Ok(image);
     }
 
     [HttpDelete("{id}/images/{imageId}")]
-    public async Task<IActionResult> RemoveImageFromProduct(Guid id, Guid imageId)
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> DeleteImage(Guid id, Guid imageId)
     {
-        await _productService.RemoveImageFromProduct(id, imageId);
+        var result = await _productService.DeleteImage(id, imageId);
+        if (!result)
+        {
+            return BadRequest("Failed to delete image.");
+        }
         return NoContent();
     }
 
+    [HttpPut("{id}/images/{imageId}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateImage(Guid id, Guid imageId, [FromForm] IFormFile file)
+    {
+        var image = await _productService.UpdateImage(id, imageId, file);
+        if (image == null)
+        {
+            return BadRequest("Failed to update image.");
+        }
+        return Ok(image);
+    }
+
     [HttpPut("{id}/name")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductName(Guid id, [FromBody] string name)
     {
         await _productService.UpdateProductName(id, name);
@@ -80,6 +121,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}/category")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductCategory(Guid id, [FromBody] string category)
     {
         await _productService.UpdateProductCategory(id, category);
@@ -87,6 +129,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}/price")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductPrice(Guid id, [FromBody] decimal price)
     {
         await _productService.UpdateProductPrice(id, price);
@@ -94,6 +137,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}/stock")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductStock(Guid id, [FromBody] int stock)
     {
         await _productService.UpdateProductStock(id, stock);
@@ -101,6 +145,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id}/description")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateProductDescription(Guid id, [FromBody] string description)
     {
         await _productService.UpdateProductDescription(id, description);

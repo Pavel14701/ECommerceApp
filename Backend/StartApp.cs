@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.IO;
 
 public class Startup
 {
@@ -31,10 +33,10 @@ public class Startup
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IUserService, UserService>();
-        services.AddScoped<INewsService, NewsService>(); // Добавление NewsService
+        services.AddScoped<INewsService, NewsService>();
         services.AddHttpContextAccessor();
 
-        // Конфигурация аутентификации с использованием JWT
+
         var key = Encoding.ASCII.GetBytes(Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured."));
         services.AddAuthentication(x =>
         {
@@ -67,9 +69,16 @@ public class Startup
 
         app.UseRouting();
 
-        // Добавление middleware аутентификации
         app.UseAuthentication();
         app.UseAuthorization();
+
+        // Добавляем обработку статических файлов
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(
+                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads")),
+            RequestPath = "/uploads"
+        });
 
         app.UseEndpoints(endpoints =>
         {

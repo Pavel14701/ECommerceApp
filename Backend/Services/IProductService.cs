@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 public interface IProductService
 {
@@ -17,4 +18,7 @@ public interface IProductService
     Task UpdateProductPrice(Guid id, decimal price);
     Task UpdateProductStock(Guid id, int stock);
     Task UpdateProductDescription(Guid id, string description);
+    Task<Images?> UploadImage(Guid productId, IFormFile file);
+    Task<bool> DeleteImage(Guid productId, Guid imageId);
+    Task<Images?> UpdateImage(Guid productId, Guid imageId, IFormFile file);
 }
