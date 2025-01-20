@@ -8,6 +8,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<News> News { get; set; }
     public DbSet<Images> Images { get; set; }
     public DbSet<Content> Contents { get; set; }
+    public DbSet<OrderItem> OrderItems { get; set; }
 
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 

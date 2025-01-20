@@ -33,9 +33,9 @@ public class Startup
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IUserService, UserService>();
+        services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<INewsService, NewsService>();
         services.AddHttpContextAccessor();
-
 
         var key = Encoding.ASCII.GetBytes(Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured."));
         services.AddAuthentication(x =>
@@ -72,7 +72,6 @@ public class Startup
         app.UseAuthentication();
         app.UseAuthorization();
 
-        // Добавляем обработку статических файлов
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(
