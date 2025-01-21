@@ -8,6 +8,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IO;
+using NSwag;
+using NSwag.Generation.Processors;
+using NSwag.Generation.Processors.Security;
+using NJsonSchema;
+using NJsonSchema.Generation;
+using NSwag.Generation.Processors.Contexts;
 
 public class Startup
 {
@@ -58,6 +64,25 @@ public class Startup
         });
 
         services.AddControllers();
+
+        // Настройка NSwag
+        services.AddOpenApiDocument(configure =>
+        {
+            configure.Title = "My API";
+            configure.Version = "v1";
+            configure.AddSecurity("JWT", Enumerable.Empty<string>(), new OpenApiSecurityScheme
+            {
+                Type = OpenApiSecuritySchemeType.ApiKey,
+                Name = "Authorization",
+                In = OpenApiSecurityApiKeyLocation.Header,
+                Description = "Type into the textbox: Bearer {your JWT token}."
+            });
+
+            configure.OperationProcessors.Add(new AspNetCoreOperationSecurityScopeProcessor("JWT"));
+
+            // Настройка пользовательского процессора операций для IFormFile
+            configure.OperationProcessors.Add(new AddFormFileOperationProcessor());
+        });
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -75,13 +100,32 @@ public class Startup
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(
-                Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads")),
+                Path.Combine(Directory.GetCurrentDirectory(), "www", "uploads")),
             RequestPath = "/uploads"
         });
+
+        // Использование NSwag
+        app.UseOpenApi();
+        app.UseSwaggerUi();
 
         app.UseEndpoints(endpoints =>
         {
             endpoints.MapControllers();
         });
+    }
+
+    public class AddFormFileOperationProcessor : IOperationProcessor
+    {
+        public bool Process(OperationProcessorContext context)
+        {
+            foreach (var parameter in context.OperationDescription.Operation.Parameters)
+            {
+                if (parameter.Kind == OpenApiParameterKind.FormData && parameter.Name == "file")
+                {
+                    parameter.Schema = new JsonSchema { Type = JsonObjectType.String, Format = "binary" };
+                }
+            }
+            return true;
+        }
     }
 }
