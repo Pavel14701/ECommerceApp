@@ -14,6 +14,9 @@ using NSwag.Generation.Processors.Security;
 using NJsonSchema;
 using NJsonSchema.Generation;
 using NSwag.Generation.Processors.Contexts;
+using RabbitMQ.Client;
+using Microsoft.AspNetCore.Http;
+using System.Collections.Generic;
 
 public class Startup
 {
@@ -26,23 +29,71 @@ public class Startup
 
     public void ConfigureServices(IServiceCollection services)
     {
+        // Настройка базы данных
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection")));
 
+        // Настройка Redis
         services.AddSingleton<IConnectionMultiplexer>(provider =>
         {
             var configuration = Configuration["Redis:Connection"] ?? throw new InvalidOperationException("Redis connection string is not configured.");
             return ConnectionMultiplexer.Connect(configuration);
         });
 
-        services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IProductService, ProductService>();
-        services.AddScoped<IOrderService, OrderService>();
-        services.AddScoped<IUserService, UserService>();
-        services.AddScoped<IEmailService, EmailService>();
-        services.AddScoped<INewsService, NewsService>();
-        services.AddHttpContextAccessor();
+        // Настройка RabbitMQ
+        services.AddSingleton(sp =>
+        {
+            var factory = new ConnectionFactory
+            {
+                HostName = "localhost",
+                DispatchConsumersAsync = true // Включить асинхронных потребителей
+            };
+            return factory;
+        });
 
+        services.AddSingleton(sp =>
+        {
+            var factory = sp.GetRequiredService<ConnectionFactory>();
+            return factory.CreateConnection();
+        });
+
+        services.AddSingleton(sp =>
+        {
+            var connection = sp.GetRequiredService<IConnection>();
+            return connection.CreateModel();
+        });
+
+        services.AddSingleton<IConsumerInitializer, ConsumerInitializer>();
+
+        // Регистрация IHttpContextAccessor
+        services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+
+        // Регистрация обработчиков команд
+        services.AddSingleton<ICommandHandler, CommandHandler>();
+
+        // Регистрация сервисов
+        // News
+        services.AddScoped<ICreateNewsService, CreateNewsService>();
+        services.AddScoped<IUpdateNewsService, UpdateNewsService>();
+        services.AddScoped<IReadNewsService, ReadNewsService>();
+        services.AddScoped<IDeleteNewsService, DeleteNewsService>();
+        // Products
+        services.AddScoped<IProductCreateService, ProductCreateService>();
+        services.AddScoped<IProductUpdateService, ProductUpdateService>();
+        services.AddScoped<IProductReadService, ProductReadService>();
+        services.AddScoped<IProductDeleteService, ProductDeleteService>();
+        // Auth
+        services.AddScoped<IAuthService, AuthService>();
+        // User
+        services.AddScoped<IUserService, UserService>();
+        // Email
+        services.AddTransient<IEmailService, EmailService>();
+        // Broker Common
+        services.AddSingleton<IProcessedEventService, RedisProcessedEventService>();
+        services.AddSingleton<IMessageSender, MessageSender>();
+        services.AddSingleton<ICommandHandler, CommandHandler>();
+
+        // Настройка JWT аутентификации
         var key = Encoding.ASCII.GetBytes(Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured."));
         services.AddAuthentication(x =>
         {
@@ -65,12 +116,12 @@ public class Startup
 
         services.AddControllers();
 
-        // Настройка NSwag
+        // Настройка OpenAPI (Swagger)
         services.AddOpenApiDocument(configure =>
         {
             configure.Title = "My API";
             configure.Version = "v1";
-            configure.AddSecurity("JWT", Enumerable.Empty<string>(), new OpenApiSecurityScheme
+            configure.AddSecurity("JWT", new List<string>(), new OpenApiSecurityScheme
             {
                 Type = OpenApiSecuritySchemeType.ApiKey,
                 Name = "Authorization",
@@ -80,7 +131,6 @@ public class Startup
 
             configure.OperationProcessors.Add(new AspNetCoreOperationSecurityScopeProcessor("JWT"));
 
-            // Настройка пользовательского процессора операций для IFormFile
             configure.OperationProcessors.Add(new AddFormFileOperationProcessor());
         });
     }
@@ -104,7 +154,6 @@ public class Startup
             RequestPath = "/uploads"
         });
 
-        // Использование NSwag
         app.UseOpenApi();
         app.UseSwaggerUi();
 
@@ -112,6 +161,17 @@ public class Startup
         {
             endpoints.MapControllers();
         });
+
+        // Запуск прослушивания команд
+        var scopeFactory = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>();
+        using (var scope = scopeFactory.CreateScope())
+        {
+            var eventHandlers = scope.ServiceProvider.GetServices<IEventHandler>();
+            foreach (var handler in eventHandlers)
+            {
+                handler.StartListening();
+            }
+        }
     }
 
     public class AddFormFileOperationProcessor : IOperationProcessor
