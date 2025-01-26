@@ -1,26 +1,39 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <div id="app">
+    <AppHeader />
+    <main>
+      <HeroBlock />
+      <DescriptionBlock title="About Us" description="We offer the latest trends in fashion." />
+      <ProductSliderBlock />
+      <DescriptionBlock title="Our Mission" description="To provide high-quality clothing at affordable prices." />
+    </main>
+    <AppFooter />
+  </div>
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import AppHeader from './components/Header.vue';
+import HeroBlock from './components/Hero.vue';
+import DescriptionBlock from './components/DescriptionBlock.vue';
+import ProductSliderBlock from './components/ProductSlider.vue';
+import AppFooter from './components/Footer.vue';
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    AppHeader,
+    HeroBlock,
+    DescriptionBlock,
+    ProductSliderBlock,
+    AppFooter
   }
 }
 </script>
 
 <style>
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
 }
 </style>
