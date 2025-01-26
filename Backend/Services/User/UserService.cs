@@ -133,7 +133,7 @@ public class UserService : IUserService
 
     private string GenerateSalt()
     {
-        var saltBytes = new byte[18];
+        var saltBytes = new byte[22];
         RandomNumberGenerator.Fill(saltBytes);
         return Convert.ToBase64String(saltBytes);
     }

@@ -1,11 +1,20 @@
+using System;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
+using System.Threading.Tasks;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
-        CreateHostBuilder(args).Build().Run();
+        if (args.Length > 0 && args[0] == "createadmin")
+        {
+            await RunAdminCreatorAsync();
+        }
+        else
+        {
+            CreateHostBuilder(args).Build().Run();
+        }
     }
 
     public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -14,4 +23,10 @@ public class Program
             {
                 webBuilder.UseStartup<Startup>();
             });
+
+    private static async Task RunAdminCreatorAsync()
+    {
+        var adminCreatorProgramType = typeof(AdminCreator.Program);
+        await (Task) adminCreatorProgramType.GetMethod("Main").Invoke(null, new object[] { new string[0] });
+    }
 }
