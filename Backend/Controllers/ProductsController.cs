@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Authorization;
 
 [Route("api/[controller]")]
 [ApiController]
-public class ProductsController : ControllerBase
+public class productsController : ControllerBase
 {
     private readonly IMessageSender _messageSender;
 
-    public ProductsController(IMessageSender messageSender)
+    public productsController(IMessageSender messageSender)
     {
         _messageSender = messageSender;
     }

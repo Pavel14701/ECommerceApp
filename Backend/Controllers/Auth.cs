@@ -3,11 +3,11 @@ using System.Threading.Tasks;
 
 [Route("api/[controller]")]
 [ApiController]
-public class AuthController : ControllerBase
+public class authController : ControllerBase
 {
     private readonly IAuthService _authService;
 
-    public AuthController(IAuthService authService)
+    public authController(IAuthService authService)
     {
         _authService = authService;
     }

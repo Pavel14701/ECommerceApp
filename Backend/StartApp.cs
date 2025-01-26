@@ -133,6 +133,11 @@ public class Startup
 
             configure.OperationProcessors.Add(new AddFormFileOperationProcessor());
         });
+
+        // Регистрация IFileProvider
+        var viewsPath = Configuration.GetSection("StaticFiles:ViewsPath").Value;
+        services.AddSingleton<IFileProvider>(new PhysicalFileProvider(
+            Path.Combine(Directory.GetCurrentDirectory(), viewsPath)));
     }
 
     public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -141,18 +146,56 @@ public class Startup
         {
             app.UseDeveloperExceptionPage();
         }
+        else
+        {
+            app.UseExceptionHandler("/error");
+            app.UseHsts();
+        }
+
+        app.UseHttpsRedirection();
+        app.UseStaticFiles();
 
         app.UseRouting();
-
         app.UseAuthentication();
         app.UseAuthorization();
+
+        // Настройка для обслуживания статических файлов вашего Vue.js приложения и вьюх
+        var uploadsPath = Configuration.GetSection("StaticFiles:UploadsPath").Value;
+        var viewsPath = Configuration.GetSection("StaticFiles:ViewsPath").Value;
+
+        if (string.IsNullOrEmpty(uploadsPath))
+        {
+            throw new ArgumentNullException(nameof(uploadsPath), "Uploads path cannot be null or empty.");
+        }
+
+        if (string.IsNullOrEmpty(viewsPath))
+        {
+            throw new ArgumentNullException(nameof(viewsPath), "Views path cannot be null or empty.");
+        }
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(
+                Path.Combine(Directory.GetCurrentDirectory(), uploadsPath)),
+            RequestPath = "/uploads"
+        });
 
         app.UseStaticFiles(new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(
-                Path.Combine(Directory.GetCurrentDirectory(), "www", "uploads")),
-            RequestPath = "/uploads"
+                Path.Combine(Directory.GetCurrentDirectory(), viewsPath)),
+            RequestPath = "/views"
         });
+
+        // Перенаправление на index.html для всех необработанных запросов
+        //app.UseSpa(spa =>
+        //{
+        //    spa.Options.SourcePath = "ClientApp"; // Убедитесь, что ваш путь к приложению Vue.js указан верно
+
+        //    if (env.IsDevelopment())
+        //    {
+        //        spa.UseProxyToSpaDevelopmentServer("http://localhost:8080"); // Убедитесь, что ваш сервер разработки Vue.js указан верно
+        //    }
+        //});
 
         app.UseOpenApi();
         app.UseSwaggerUi();

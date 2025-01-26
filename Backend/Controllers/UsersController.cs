@@ -5,11 +5,11 @@ using System.Threading.Tasks;
 
 [Route("api/[controller]")]
 [ApiController]
-public class UserController : ControllerBase
+public class userController : ControllerBase
 {
     private readonly IMessageSender _messageSender;
 
-    public UserController(IMessageSender messageSender)
+    public userController(IMessageSender messageSender)
     {
         _messageSender = messageSender;
     }
