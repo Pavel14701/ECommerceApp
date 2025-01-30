@@ -27,6 +27,7 @@ public class Program
     private static async Task RunAdminCreatorAsync()
     {
         var adminCreatorProgramType = typeof(AdminCreator.Program);
+
         await (Task) adminCreatorProgramType.GetMethod("Main").Invoke(null, new object[] { new string[0] });
     }
 }
