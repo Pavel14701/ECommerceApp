@@ -22,8 +22,19 @@ public class AuthService : IAuthService
     public async Task<AuthResultDto> Authenticate(string username, string password)
     {
         var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
-        if (user == null || !VerifyPasswordHash(password, user.PasswordHash))
+        if (user == null)
         {
+            Console.WriteLine("User not found.");
+            return new AuthResultDto { Success = false, Message = "Invalid username or password." };
+        }
+
+        Console.WriteLine($"Username: {user.Username}");
+        Console.WriteLine($"Salt: {user.Salt}");
+        Console.WriteLine($"Stored hashed password: {user.PasswordHash}");
+
+        if (!VerifyPasswordHash(password, user.PasswordHash, user.Salt))
+        {
+            Console.WriteLine("Password hash verification failed.");
             return new AuthResultDto { Success = false, Message = "Invalid username or password." };
         }
 
@@ -36,6 +47,19 @@ public class AuthService : IAuthService
             Tokens = tokens,
             Message = "User authenticated successfully."
         };
+    }
+
+    private bool VerifyPasswordHash(string password, string storedHash, string storedSalt)
+    {
+        using (var sha256 = SHA256.Create())
+        {
+            var saltedPassword = Encoding.UTF8.GetBytes(password).Concat(Convert.FromBase64String(storedSalt)).ToArray();
+            var saltedHash = sha256.ComputeHash(saltedPassword);
+            var inputPasswordHash = Convert.ToBase64String(saltedHash);
+            Console.WriteLine($"Input hash: {inputPasswordHash}");
+            Console.WriteLine($"Stored hash: {storedHash}");
+            return inputPasswordHash == storedHash;
+        }
     }
 
     public TokenResultDto GenerateTokens(User user)
@@ -63,7 +87,7 @@ public class AuthService : IAuthService
                 IssuerSigningKey = new SymmetricSecurityKey(key),
                 ValidateIssuer = false,
                 ValidateAudience = false,
-                ValidateLifetime = false // we are only verifying the token signature, not its expiration
+                ValidateLifetime = false
             }, out SecurityToken validatedToken);
 
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -99,25 +123,16 @@ public class AuthService : IAuthService
         }
     }
 
-    private bool VerifyPasswordHash(string password, string storedHash)
-    {
-        var parts = storedHash.Split(':');
-        var salt = Convert.FromBase64String(parts[0]);
-        var storedPasswordHash = parts[1];
-
-        using (var sha256 = SHA256.Create())
-        {
-            var saltedPassword = Encoding.UTF8.GetBytes(password);
-            var saltedHash = sha256.ComputeHash(salt.Concat(saltedPassword).ToArray());
-            var inputPasswordHash = Convert.ToBase64String(saltedHash);
-            return inputPasswordHash == storedPasswordHash;
-        }
-    }
-
     private string GenerateAccessToken(User user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
+
+        // Установите значения NotBefore и Expires
+        var now = DateTime.UtcNow;
+        var notBefore = now.AddSeconds(-1); // Смещение на 1 секунду назад
+        var expires = now.AddMinutes(_configuration.GetValue<int>("Jwt:AccessTokenLifetimeMinutes"));
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[]
@@ -126,7 +141,8 @@ public class AuthService : IAuthService
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
             }),
-            Expires = DateTime.UtcNow.AddMinutes(_configuration.GetValue<int>("Jwt:AccessTokenLifetimeMinutes")),
+            NotBefore = notBefore, // Установите NotBefore с небольшим смещением
+            Expires = expires, // Установите Expires на более позднее время
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         };
 
@@ -134,10 +150,18 @@ public class AuthService : IAuthService
         return tokenHandler.WriteToken(token);
     }
 
+
+
     private string GenerateRefreshToken(User user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
         var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
+
+        // Установите значения NotBefore и Expires
+        var now = DateTime.UtcNow;
+        var notBefore = now.AddSeconds(-1); // Смещение на 1 секунду назад
+        var expires = now.AddDays(_configuration.GetValue<int>("Jwt:RefreshTokenLifetimeDays"));
+
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[]
@@ -146,7 +170,8 @@ public class AuthService : IAuthService
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim(ClaimTypes.Email, user.Email),
             }),
-            Expires = DateTime.UtcNow.AddDays(_configuration.GetValue<int>("Jwt:RefreshTokenLifetimeDays")),
+            NotBefore = notBefore, // Установите NotBefore с небольшим смещением
+            Expires = expires, // Установите Expires на более позднее время
             SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         };
 

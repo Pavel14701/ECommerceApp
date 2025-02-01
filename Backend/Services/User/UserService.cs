@@ -142,11 +142,13 @@ public class UserService : IUserService
     {
         using (var sha256 = SHA256.Create())
         {
-            var combinedPassword = password + salt;
-            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(combinedPassword));
+            var saltedPassword = Encoding.UTF8.GetBytes(password).Concat(Convert.FromBase64String(salt)).ToArray();
+            var hashBytes = sha256.ComputeHash(saltedPassword);
             return Convert.ToBase64String(hashBytes);
         }
     }
+
+
 
     private string GenerateEmailConfirmationToken(User user)
     {

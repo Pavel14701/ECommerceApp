@@ -35,7 +35,7 @@ public class AdminService : IAdminService
 
     private string GenerateSalt()
     {
-        var saltBytes = new byte[18];
+        var saltBytes = new byte[22];
         RandomNumberGenerator.Fill(saltBytes);
         return Convert.ToBase64String(saltBytes);
     }
@@ -44,8 +44,8 @@ public class AdminService : IAdminService
     {
         using (var sha256 = SHA256.Create())
         {
-            var combinedPassword = password + salt;
-            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(combinedPassword));
+            var saltedPassword = Encoding.UTF8.GetBytes(password).Concat(Convert.FromBase64String(salt)).ToArray();
+            var hashBytes = sha256.ComputeHash(saltedPassword);
             return Convert.ToBase64String(hashBytes);
         }
     }
