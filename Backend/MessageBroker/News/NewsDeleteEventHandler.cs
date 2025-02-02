@@ -46,8 +46,9 @@ public class NewsDeleteEventHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _deleteNewsService.DeleteNews(deleteNewsCommand.NewsId);
+                var result = await _deleteNewsService.DeleteNews(deleteNewsCommand.NewsId);
                 await _processedEventService.MarkEventAsProcessed(deleteNewsCommand.CommandId);
+                return result;
             });
         }
     }
@@ -67,6 +68,7 @@ public class NewsDeleteEventHandler : IEventHandler
             {
                 var result = await _deleteNewsService.DeleteImage(deleteImageCommand.ObjectId, deleteImageCommand.ImageId);
                 await _processedEventService.MarkEventAsProcessed(deleteImageCommand.CommandId);
+                return result;
             });
         }
     }

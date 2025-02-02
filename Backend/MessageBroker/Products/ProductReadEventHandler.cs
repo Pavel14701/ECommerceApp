@@ -48,8 +48,9 @@ public class ProductQueryHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var products = await _productReadService.GetAllProducts(getAllProductsQuery.PageNumber, getAllProductsQuery.PageSize);
+                var result = await _productReadService.GetAllProducts(getAllProductsQuery.PageNumber, getAllProductsQuery.PageSize);
                 await _processedEventService.MarkEventAsProcessed(getAllProductsQuery.QueryId);
+                return result;
             });
         }
     }
@@ -67,8 +68,9 @@ public class ProductQueryHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var product = await _productReadService.GetProductById(getProductByIdQuery.ProductId);
+                var result = await _productReadService.GetProductById(getProductByIdQuery.ProductId);
                 await _processedEventService.MarkEventAsProcessed(getProductByIdQuery.QueryId);
+                return result;
             });
         }
     }
@@ -86,8 +88,9 @@ public class ProductQueryHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var products = await _productReadService.GetProductsByCategory(getProductsByCategoryQuery.Category, getProductsByCategoryQuery.PageNumber, getProductsByCategoryQuery.PageSize);
+                var result = await _productReadService.GetProductsByCategory(getProductsByCategoryQuery.Category, getProductsByCategoryQuery.PageNumber, getProductsByCategoryQuery.PageSize);
                 await _processedEventService.MarkEventAsProcessed(getProductsByCategoryQuery.QueryId);
+                return result;
             });
         }
     }
@@ -105,8 +108,9 @@ public class ProductQueryHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var products = await _productReadService.GetProductsByName(getProductsByNameQuery.Name, getProductsByNameQuery.PageNumber, getProductsByNameQuery.PageSize);
+                var result = await _productReadService.GetProductsByName(getProductsByNameQuery.Name, getProductsByNameQuery.PageNumber, getProductsByNameQuery.PageSize);
                 await _processedEventService.MarkEventAsProcessed(getProductsByNameQuery.QueryId);
+                return result;
             });
         }
     }

@@ -21,5 +21,10 @@ public interface IProcessedEventService
 
 public interface ICommandHandler
 {
-    Task HandleCommandAsync(BasicDeliverEventArgs ea, Func<Task> handleFunc);
+    Task HandleCommandAsync<T>(BasicDeliverEventArgs ea, Func<Task<T>>  handleFunc);
+}
+
+public interface IRabbitMQInitializer
+{
+    void Initialize();
 }

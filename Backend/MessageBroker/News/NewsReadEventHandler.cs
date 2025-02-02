@@ -46,8 +46,9 @@ public class ReadNewsEventHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var newsDto = await _readNewsService.GetAllNews(getAllNewsQuery.PageNumber, getAllNewsQuery.PageSize);
+                var result = await _readNewsService.GetAllNews(getAllNewsQuery.PageNumber, getAllNewsQuery.PageSize);
                 await _processedEventService.MarkEventAsProcessed(getAllNewsQuery.QueryId);
+                return result;
             });
         }
     }
@@ -65,8 +66,9 @@ public class ReadNewsEventHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var fetchedNews = await _readNewsService.GetNewsById(getNewsByIdQuery.NewsId);
+                var result = await _readNewsService.GetNewsById(getNewsByIdQuery.NewsId);
                 await _processedEventService.MarkEventAsProcessed(getNewsByIdQuery.QueryId);
+                return result;
             });
         }
     }

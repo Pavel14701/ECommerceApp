@@ -48,6 +48,7 @@ public class ProductDeleteCommandHandler : IEventHandler
             {
                 var result = await _productDeleteService.DeleteProduct(deleteProductCommand.ProductId);
                 await _processedEventService.MarkEventAsProcessed(deleteProductCommand.CommandId);
+                return result;
             });
         }
     }
@@ -67,6 +68,7 @@ public class ProductDeleteCommandHandler : IEventHandler
             {
                 var result = await _productDeleteService.DeleteImage(deleteImageCommand.ObjectId, deleteImageCommand.ImageId);
                 await _processedEventService.MarkEventAsProcessed(deleteImageCommand.CommandId);
+                return result;
             });
         }
     }

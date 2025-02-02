@@ -46,8 +46,9 @@ public class ProductCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productCreateService.AddProduct(createProductCommand.Product);
+                var result = await _productCreateService.AddProduct(createProductCommand.Product);
                 await _processedEventService.MarkEventAsProcessed(createProductCommand.CommandId);
+                return result;
             });
         }
     }
@@ -65,8 +66,9 @@ public class ProductCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productCreateService.UploadImage(uploadImageCommand.Id, uploadImageCommand.File);
+                var result = await _productCreateService.UploadImage(uploadImageCommand.Id, uploadImageCommand.File);
                 await _processedEventService.MarkEventAsProcessed(uploadImageCommand.CommandId);
+                return result;
             });
         }
     }

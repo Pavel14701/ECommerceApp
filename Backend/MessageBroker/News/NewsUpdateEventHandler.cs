@@ -51,6 +51,7 @@ public class NewsUpdateHandler : IEventHandler
             {
                 var result = await _updateNewsService.UpdateNews(updateNewsCommand.News);
                 await _processedEventService.MarkEventAsProcessed(updateNewsCommand.CommandId);
+                return result;
             });
         }
     }
@@ -70,6 +71,7 @@ public class NewsUpdateHandler : IEventHandler
             {
                 var result = await _updateNewsService.UpdateImage(updateImageCommand.NewsId, updateImageCommand.ImageId, updateImageCommand.File);
                 await _processedEventService.MarkEventAsProcessed(updateImageCommand.CommandId);
+                return result;
             });
         }
     }
@@ -89,6 +91,7 @@ public class NewsUpdateHandler : IEventHandler
             {
                 var result = await _updateNewsService.UpdateNewsTitle(updateNewsTitleCommand.NewsId, updateNewsTitleCommand.Title);
                 await _processedEventService.MarkEventAsProcessed(updateNewsTitleCommand.CommandId);
+                return result;
             });
         }
     }
@@ -108,6 +111,7 @@ public class NewsUpdateHandler : IEventHandler
             {
                 var result = await _updateNewsService.UpdateNewsPublishDate(updateNewsPublishDateCommand.NewsId, updateNewsPublishDateCommand.PublishDate);
                 await _processedEventService.MarkEventAsProcessed(updateNewsPublishDateCommand.CommandId);
+                return result;
             });
         }
     }
@@ -127,6 +131,7 @@ public class NewsUpdateHandler : IEventHandler
             {
                 var result = await _updateNewsService.UpdateNewsContentText(updateNewsContentTextCommand.NewsId, updateNewsContentTextCommand.ContentId, updateNewsContentTextCommand.Text);
                 await _processedEventService.MarkEventAsProcessed(updateNewsContentTextCommand.CommandId);
+                return result;
             });
         }
     }

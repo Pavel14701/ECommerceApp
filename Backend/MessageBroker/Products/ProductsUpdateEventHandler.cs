@@ -51,8 +51,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductName(updateProductNameCommand.ProductId, updateProductNameCommand.Name);
+                var result = await _productUpdateService.UpdateProductName(updateProductNameCommand.ProductId, updateProductNameCommand.Name);
                 await _processedEventService.MarkEventAsProcessed(updateProductNameCommand.CommandId);
+                return result;
             });
         }
     }
@@ -70,8 +71,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductCategory(updateProductCategoryCommand.ProductId, updateProductCategoryCommand.Category);
+                var result = await _productUpdateService.UpdateProductCategory(updateProductCategoryCommand.ProductId, updateProductCategoryCommand.Category);
                 await _processedEventService.MarkEventAsProcessed(updateProductCategoryCommand.CommandId);
+                return result;
             });
         }
     }
@@ -89,8 +91,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductPrice(updateProductPriceCommand.ProductId, updateProductPriceCommand.Price);
+                var result = await _productUpdateService.UpdateProductPrice(updateProductPriceCommand.ProductId, updateProductPriceCommand.Price);
                 await _processedEventService.MarkEventAsProcessed(updateProductPriceCommand.CommandId);
+                return result;
             });
         }
     }
@@ -108,8 +111,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductStock(updateProductStockCommand.ProductId, updateProductStockCommand.Stock);
+                var result = await _productUpdateService.UpdateProductStock(updateProductStockCommand.ProductId, updateProductStockCommand.Stock);
                 await _processedEventService.MarkEventAsProcessed(updateProductStockCommand.CommandId);
+                return result;
             });
         }
     }
@@ -127,10 +131,11 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductDescription(updateProductDescriptionCommand.ProductId, updateProductDescriptionCommand.Description);
+                var result = await _productUpdateService.UpdateProductDescription(updateProductDescriptionCommand.ProductId, updateProductDescriptionCommand.Description);
                 await _processedEventService.MarkEventAsProcessed(updateProductDescriptionCommand.CommandId);
+                return result;
             });
-        }
+        }   
     }
 
     public async Task HandleUpdateProductImageCommand(BasicDeliverEventArgs ea)
@@ -146,8 +151,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProductImage(updateProductImageCommand.ProductId, updateProductImageCommand.ImageId, updateProductImageCommand.File);
+                var result = await _productUpdateService.UpdateProductImage(updateProductImageCommand.ProductId, updateProductImageCommand.ImageId, updateProductImageCommand.File);
                 await _processedEventService.MarkEventAsProcessed(updateProductImageCommand.CommandId);
+                return result;
             });
         }
     }
@@ -165,8 +171,9 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _productUpdateService.UpdateProduct(updateProductCommand.Product);
+                var result = await _productUpdateService.UpdateProduct(updateProductCommand.Product);
                 await _processedEventService.MarkEventAsProcessed(updateProductCommand.CommandId);
+                return result;
             });
         }
     }

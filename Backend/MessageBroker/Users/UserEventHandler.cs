@@ -49,8 +49,9 @@ public class UserCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _userService.RegisterUser(registerUserCommand.Username, registerUserCommand.Email, registerUserCommand.Password);
+                var result = await _userService.RegisterUser(registerUserCommand.Username, registerUserCommand.Email, registerUserCommand.Password);
                 await _processedEventService.MarkEventAsProcessed(registerUserCommand.CommandId);
+                return result;
             });
         }
     }
@@ -68,8 +69,9 @@ public class UserCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _userService.ConfirmEmail(confirmEmailCommand.UserId, confirmEmailCommand.Token);
+                var result = await _userService.ConfirmEmail(confirmEmailCommand.UserId, confirmEmailCommand.Token);
                 await _processedEventService.MarkEventAsProcessed(confirmEmailCommand.CommandId);
+                return result;
             });
         }
     }
@@ -87,8 +89,9 @@ public class UserCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _userService.DeleteUser(deleteUserCommand.UserId);
+                var result = await _userService.DeleteUser(deleteUserCommand.UserId);
                 await _processedEventService.MarkEventAsProcessed(deleteUserCommand.CommandId);
+                return result;
             });
         }
     }
@@ -106,8 +109,9 @@ public class UserCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _userService.UpdateUsername(updateUsernameCommand.UserId, updateUsernameCommand.NewUsername);
+                var result = await _userService.UpdateUsername(updateUsernameCommand.UserId, updateUsernameCommand.NewUsername);
                 await _processedEventService.MarkEventAsProcessed(updateUsernameCommand.CommandId);
+                return result;
             });
         }
     }
@@ -125,8 +129,9 @@ public class UserCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                await _userService.UpdatePassword(updatePasswordCommand.UserId, updatePasswordCommand.NewPassword);
+                var result = await _userService.UpdatePassword(updatePasswordCommand.UserId, updatePasswordCommand.NewPassword);
                 await _processedEventService.MarkEventAsProcessed(updatePasswordCommand.CommandId);
+                return result;
             });
         }
     }

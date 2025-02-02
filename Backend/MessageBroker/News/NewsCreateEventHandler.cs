@@ -45,10 +45,11 @@ public class NewsEventHandler : IEventHandler
                 return;
             }
 
-            await _commandHandler.HandleCommandAsync(ea, async () =>
+            await _commandHandler.HandleCommandAsync<NewsCreationResultDto>(ea, async () =>
             {
                 var result = await _createNewsService.AddNews(createNewsCommand.News);
                 await _processedEventService.MarkEventAsProcessed(createNewsCommand.CommandId);
+                return result;
             });
         }
     }
@@ -64,10 +65,11 @@ public class NewsEventHandler : IEventHandler
                 return;
             }
 
-            await _commandHandler.HandleCommandAsync(ea, async () =>
+            await _commandHandler.HandleCommandAsync<NewsCreationResultDto>(ea, async () =>
             {
                 var result = await _createNewsService.AddImageToNews(addImageToNewsCommand.NewsId, addImageToNewsCommand.Image);
                 await _processedEventService.MarkEventAsProcessed(addImageToNewsCommand.CommandId);
+                return result;
             });
         }
     }
@@ -83,10 +85,11 @@ public class NewsEventHandler : IEventHandler
                 return;
             }
 
-            await _commandHandler.HandleCommandAsync(ea, async () =>
+            await _commandHandler.HandleCommandAsync<ImageUploadResultDto>(ea, async () =>
             {
                 var result = await _createNewsService.UploadImage(uploadImageCommand.Id, uploadImageCommand.File);
                 await _processedEventService.MarkEventAsProcessed(uploadImageCommand.CommandId);
+                return result;
             });
         }
     }

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Hosting;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -9,14 +9,10 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.IO;
 using NSwag;
-using NSwag.Generation.Processors;
 using NSwag.Generation.Processors.Security;
 using NJsonSchema;
-using NJsonSchema.Generation;
-using NSwag.Generation.Processors.Contexts;
 using RabbitMQ.Client;
-using Microsoft.AspNetCore.Http;
-using System.Collections.Generic;
+using Microsoft.Extensions.FileProviders;
 
 public class Startup
 {
@@ -32,6 +28,9 @@ public class Startup
         // Настройка базы данных
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection")));
+
+        // Настройка фабрики DbContext
+        services.AddSingleton<IDbContextFactory, DbContextFactory>();
 
         // Настройка Redis
         services.AddSingleton<IConnectionMultiplexer>(provider =>
@@ -64,34 +63,29 @@ public class Startup
         });
 
         services.AddSingleton<IConsumerInitializer, ConsumerInitializer>();
+        services.AddSingleton<IRabbitMQInitializer, RabbitMQInitializer>();
 
-        // Регистрация IHttpContextAccessor
-        services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+        // Регистрация AuthCommandHandler как scoped
+        services.AddScoped<IEventHandler, AuthCommandHandler>();
 
-        // Регистрация обработчиков команд
+        // Регистрация других сервисов
         services.AddSingleton<ICommandHandler, CommandHandler>();
-
-        // Регистрация сервисов
-        // News
+        services.AddSingleton<IProcessedEventService, RedisProcessedEventService>();
+        services.AddSingleton<IMessageSender, MessageSender>();
         services.AddScoped<ICreateNewsService, CreateNewsService>();
         services.AddScoped<IUpdateNewsService, UpdateNewsService>();
         services.AddScoped<IReadNewsService, ReadNewsService>();
         services.AddScoped<IDeleteNewsService, DeleteNewsService>();
-        // Products
         services.AddScoped<IProductCreateService, ProductCreateService>();
         services.AddScoped<IProductUpdateService, ProductUpdateService>();
         services.AddScoped<IProductReadService, ProductReadService>();
         services.AddScoped<IProductDeleteService, ProductDeleteService>();
-        // Auth
         services.AddScoped<IAuthService, AuthService>();
-        // User
         services.AddScoped<IUserService, UserService>();
-        // Email
         services.AddTransient<IEmailService, EmailService>();
-        // Broker Common
-        services.AddSingleton<IProcessedEventService, RedisProcessedEventService>();
-        services.AddSingleton<IMessageSender, MessageSender>();
-        services.AddSingleton<ICommandHandler, CommandHandler>();
+
+        // Регистрация IHttpContextAccessor
+        services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
 
         // Настройка JWT аутентификации
         var key = Encoding.ASCII.GetBytes(Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured."));
@@ -130,8 +124,6 @@ public class Startup
             });
 
             configure.OperationProcessors.Add(new AspNetCoreOperationSecurityScopeProcessor("JWT"));
-
-            configure.OperationProcessors.Add(new AddFormFileOperationProcessor());
         });
 
         // Регистрация IFileProvider
@@ -159,44 +151,6 @@ public class Startup
         app.UseAuthentication();
         app.UseAuthorization();
 
-        // Настройка для обслуживания статических файлов вашего Vue.js приложения и вьюх
-        var uploadsPath = Configuration.GetSection("StaticFiles:UploadsPath").Value;
-        var viewsPath = Configuration.GetSection("StaticFiles:ViewsPath").Value;
-
-        if (string.IsNullOrEmpty(uploadsPath))
-        {
-            throw new ArgumentNullException(nameof(uploadsPath), "Uploads path cannot be null or empty.");
-        }
-
-        if (string.IsNullOrEmpty(viewsPath))
-        {
-            throw new ArgumentNullException(nameof(viewsPath), "Views path cannot be null or empty.");
-        }
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new PhysicalFileProvider(
-                Path.Combine(Directory.GetCurrentDirectory(), uploadsPath)),
-            RequestPath = "/uploads"
-        });
-
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new PhysicalFileProvider(
-                Path.Combine(Directory.GetCurrentDirectory(), viewsPath)),
-            RequestPath = "/views"
-        });
-
-        // Перенаправление на index.html для всех необработанных запросов
-        //app.UseSpa(spa =>
-        //{
-        //    spa.Options.SourcePath = "ClientApp"; // Убедитесь, что ваш путь к приложению Vue.js указан верно
-
-        //    if (env.IsDevelopment())
-        //    {
-        //        spa.UseProxyToSpaDevelopmentServer("http://localhost:8080"); // Убедитесь, что ваш сервер разработки Vue.js указан верно
-        //    }
-        //});
-
         app.UseOpenApi();
         app.UseSwaggerUi();
 
@@ -205,30 +159,23 @@ public class Startup
             endpoints.MapControllers();
         });
 
-        // Запуск прослушивания команд
+        // Инициализация RabbitMQ
         var scopeFactory = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>();
         using (var scope = scopeFactory.CreateScope())
         {
+            var rabbitMQInitializer = scope.ServiceProvider.GetRequiredService<IRabbitMQInitializer>();
+            rabbitMQInitializer.Initialize();
+
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Startup>>();
+
+            // Запуск прослушивания команд
             var eventHandlers = scope.ServiceProvider.GetServices<IEventHandler>();
             foreach (var handler in eventHandlers)
             {
+                logger.LogInformation("Initializing StartListening for handler: {HandlerType}", handler.GetType().Name);
                 handler.StartListening();
+                logger.LogInformation("Started listening on queues for handler: {HandlerType}", handler.GetType().Name);
             }
-        }
-    }
-
-    public class AddFormFileOperationProcessor : IOperationProcessor
-    {
-        public bool Process(OperationProcessorContext context)
-        {
-            foreach (var parameter in context.OperationDescription.Operation.Parameters)
-            {
-                if (parameter.Kind == OpenApiParameterKind.FormData && parameter.Name == "file")
-                {
-                    parameter.Schema = new JsonSchema { Type = JsonObjectType.String, Format = "binary" };
-                }
-            }
-            return true;
         }
     }
 }

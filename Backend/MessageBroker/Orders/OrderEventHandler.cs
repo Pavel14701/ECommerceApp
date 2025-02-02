@@ -49,6 +49,7 @@ public class OrderHandler : IEventHandler
             {
                 var result = await _orderService.CreateOrder(createOrderCommand.Order);
                 await _processedEventService.MarkEventAsProcessed(createOrderCommand.CommandId);
+                return result;
             });
         }
     }
@@ -68,6 +69,7 @@ public class OrderHandler : IEventHandler
             {
                 var result = await _orderService.ApplyDiscount(applyDiscountCommand.OrderId, applyDiscountCommand.Discount);
                 await _processedEventService.MarkEventAsProcessed(applyDiscountCommand.CommandId);
+                return result;
             });
         }
     }
@@ -87,6 +89,7 @@ public class OrderHandler : IEventHandler
             {
                 var result = await _orderService.GetOrderById(getOrderByIdQuery.OrderId);
                 await _processedEventService.MarkEventAsProcessed(getOrderByIdQuery.QueryId);
+                return result;
             });
         }
     }
