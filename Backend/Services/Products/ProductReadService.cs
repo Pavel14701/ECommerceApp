@@ -6,22 +6,23 @@ using System.Threading.Tasks;
 
 public class ProductReadService : IProductReadService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
 
-    public ProductReadService(ApplicationDbContext context)
+    public ProductReadService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task<PagedProductsDto> GetAllProducts(int pageNumber, int pageSize)
     {
-        var products = await _context.Products
+        using var context = _dbContextFactory.CreateDbContext();
+        var products = await context.Products
                                      .Include(p => p.Images)
                                      .Skip((pageNumber - 1) * pageSize)
                                      .Take(pageSize)
                                      .ToListAsync();
 
-        var totalCount = await _context.Products.CountAsync();
+        var totalCount = await context.Products.CountAsync();
         var productDtos = products.Select(p => new ProductDto
         {
             Id = p.Id,
@@ -47,14 +48,15 @@ public class ProductReadService : IProductReadService
 
     public async Task<PagedProductsDto> GetProductsByCategory(string category, int pageNumber, int pageSize)
     {
-        var products = await _context.Products
+        using var context = _dbContextFactory.CreateDbContext();
+        var products = await context.Products
                                      .Include(p => p.Images)
                                      .Where(p => p.Category == category)
                                      .Skip((pageNumber - 1) * pageSize)
                                      .Take(pageSize)
                                      .ToListAsync();
 
-        var totalCount = await _context.Products.CountAsync(p => p.Category == category);
+        var totalCount = await context.Products.CountAsync(p => p.Category == category);
         var productDtos = products.Select(p => new ProductDto
         {
             Id = p.Id,
@@ -80,14 +82,15 @@ public class ProductReadService : IProductReadService
 
     public async Task<PagedProductsDto> GetProductsByName(string name, int pageNumber, int pageSize)
     {
-        var products = await _context.Products
+        using var context = _dbContextFactory.CreateDbContext();
+        var products = await context.Products
                                      .Include(p => p.Images)
                                      .Where(p => p.Name.Contains(name))
                                      .Skip((pageNumber - 1) * pageSize)
                                      .Take(pageSize)
                                      .ToListAsync();
 
-        var totalCount = await _context.Products.CountAsync(p => p.Name.Contains(name));
+        var totalCount = await context.Products.CountAsync(p => p.Name.Contains(name));
         var productDtos = products.Select(p => new ProductDto
         {
             Id = p.Id,
@@ -113,7 +116,8 @@ public class ProductReadService : IProductReadService
 
     public async Task<ProductDto> GetProductById(Guid id)
     {
-        var product = await _context.Products
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products
                                     .Include(p => p.Images)
                                     .FirstOrDefaultAsync(p => p.Id == id);
 

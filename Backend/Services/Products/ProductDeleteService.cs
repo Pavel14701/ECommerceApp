@@ -5,12 +5,12 @@ using System.Threading.Tasks;
 
 public class ProductDeleteService : IProductDeleteService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public ProductDeleteService(ApplicationDbContext context)
+    public ProductDeleteService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -21,7 +21,8 @@ public class ProductDeleteService : IProductDeleteService
 
     public async Task<ProductDeletionResultDto> DeleteProduct(Guid id)
     {
-        var product = await _context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
         if (product != null)
         {
             foreach (var image in product.Images)
@@ -33,8 +34,8 @@ public class ProductDeleteService : IProductDeleteService
                 }
             }
 
-            _context.Products.Remove(product);
-            await _context.SaveChangesAsync();
+            context.Products.Remove(product);
+            await context.SaveChangesAsync();
 
             return new ProductDeletionResultDto
             {
@@ -52,7 +53,8 @@ public class ProductDeleteService : IProductDeleteService
 
     public async Task<ImageDeletionResultDto> DeleteImage(Guid productId, Guid imageId)
     {
-        var product = await _context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
         if (product == null)
         {
             return new ImageDeletionResultDto
@@ -79,7 +81,7 @@ public class ProductDeleteService : IProductDeleteService
         }
 
         product.Images.Remove(image);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new ImageDeletionResultDto
         {

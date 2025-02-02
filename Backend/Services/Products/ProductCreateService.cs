@@ -6,12 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 public class ProductCreateService : IProductCreateService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public ProductCreateService(ApplicationDbContext context)
+    public ProductCreateService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -22,8 +22,9 @@ public class ProductCreateService : IProductCreateService
 
     public async Task<ProductCreationResultDto> AddProduct(Product product)
     {
-        _context.Products.Add(product);
-        await _context.SaveChangesAsync();
+        using var context = _dbContextFactory.CreateDbContext();
+        context.Products.Add(product);
+        await context.SaveChangesAsync();
         
         return new ProductCreationResultDto
         {
@@ -34,7 +35,8 @@ public class ProductCreateService : IProductCreateService
 
     public async Task<ImageUploadResultDto> UploadImage(Guid productId, IFormFile file)
     {
-        var product = await _context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
         if (product == null || file == null || file.Length == 0)
         {
             return new ImageUploadResultDto
@@ -59,7 +61,7 @@ public class ProductCreateService : IProductCreateService
         };
 
         product.Images.Add(image);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new ImageUploadResultDto
         {

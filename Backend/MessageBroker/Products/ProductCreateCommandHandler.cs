@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-public class ProductCommandHandler : IEventHandler
+public class ProductCreateCommandHandler : IEventHandler
 {
     private readonly IProductCreateService _productCreateService;
     private readonly IProcessedEventService _processedEventService;
@@ -13,7 +13,7 @@ public class ProductCommandHandler : IEventHandler
     private readonly IConsumerInitializer _consumerInitializer;
     private readonly ICommandHandler _commandHandler;
 
-    public ProductCommandHandler(
+    public ProductCreateCommandHandler(
         IProductCreateService productCreateService,
         IProcessedEventService processedEventService,
         IModel channel,

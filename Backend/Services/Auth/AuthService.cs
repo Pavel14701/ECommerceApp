@@ -15,12 +15,14 @@ public class AuthService : IAuthService
     private readonly IDbContextFactory _dbContextFactory;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthService> _logger;
+    private readonly byte[] _key;
 
     public AuthService(IDbContextFactory dbContextFactory, IConfiguration configuration, ILogger<AuthService> logger)
     {
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
         _logger = logger;
+        _key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured."));
     }
 
     public async Task<AuthResultDto> Authenticate(string username, string password)
@@ -124,12 +126,11 @@ public class AuthService : IAuthService
         try
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
 
             var principal = tokenHandler.ValidateToken(refreshToken, new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(key),
+                IssuerSigningKey = new SymmetricSecurityKey(_key),
                 ValidateIssuer = false,
                 ValidateAudience = false,
                 ValidateLifetime = false
@@ -182,8 +183,6 @@ public class AuthService : IAuthService
         try
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
-
             var now = DateTime.UtcNow;
             var notBefore = now.AddSeconds(-1);
             var expires = now.AddMinutes(_configuration.GetValue<int>("Jwt:AccessTokenLifetimeMinutes"));
@@ -198,7 +197,7 @@ public class AuthService : IAuthService
                 }),
                 NotBefore = notBefore,
                 Expires = expires,
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(_key), SecurityAlgorithms.HmacSha256Signature)
             };
 
             var token = tokenHandler.CreateToken(tokenDescriptor);
@@ -221,8 +220,6 @@ public class AuthService : IAuthService
         try
         {
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"]!);
-
             var now = DateTime.UtcNow;
             var notBefore = now.AddSeconds(-1);
             var expires = now.AddDays(_configuration.GetValue<int>("Jwt:RefreshTokenLifetimeDays"));
@@ -237,7 +234,7 @@ public class AuthService : IAuthService
                 }),
                 NotBefore = notBefore,
                 Expires = expires,
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(_key), SecurityAlgorithms.HmacSha256Signature)
             };
 
             var token = tokenHandler.CreateToken(tokenDescriptor);

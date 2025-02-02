@@ -6,12 +6,12 @@ using Microsoft.EntityFrameworkCore;
 
 public class ProductUpdateService : IProductUpdateService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public ProductUpdateService(ApplicationDbContext context)
+    public ProductUpdateService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -22,8 +22,9 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProduct(Product product)
     {
-        _context.Products.Update(product);
-        await _context.SaveChangesAsync();
+        using var context = _dbContextFactory.CreateDbContext();
+        context.Products.Update(product);
+        await context.SaveChangesAsync();
 
         return new ProductUpdateResultDto
         {
@@ -34,11 +35,12 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductName(Guid id, string name)
     {
-        var product = await _context.Products.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.FindAsync(id);
         if (product != null)
         {
             product.Name = name;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             return new ProductUpdateResultDto
             {
@@ -56,11 +58,12 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductCategory(Guid id, string category)
     {
-        var product = await _context.Products.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.FindAsync(id);
         if (product != null)
         {
             product.Category = category;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             return new ProductUpdateResultDto
             {
@@ -78,11 +81,12 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductPrice(Guid id, decimal price)
     {
-        var product = await _context.Products.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.FindAsync(id);
         if (product != null)
         {
             product.Price = price;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             return new ProductUpdateResultDto
             {
@@ -100,11 +104,12 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductStock(Guid id, int stock)
     {
-        var product = await _context.Products.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.FindAsync(id);
         if (product != null)
         {
             product.Stock = stock;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             return new ProductUpdateResultDto
             {
@@ -122,11 +127,12 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductDescription(Guid id, string description)
     {
-        var product = await _context.Products.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.FindAsync(id);
         if (product != null)
         {
             product.Description = description;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
 
             return new ProductUpdateResultDto
             {
@@ -144,7 +150,8 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ImageUpdateResultDto> UpdateProductImage(Guid productId, Guid imageId, IFormFile file)
     {
-        var product = await _context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
         if (product == null || file == null || file.Length == 0)
         {
             return new ImageUpdateResultDto
@@ -181,7 +188,7 @@ public class ProductUpdateService : IProductUpdateService
         };
 
         product.Images.Add(newImage);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new ImageUpdateResultDto
         {

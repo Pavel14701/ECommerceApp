@@ -7,12 +7,12 @@ using Microsoft.AspNetCore.Http;
 
 public class UpdateNewsService : IUpdateNewsService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public UpdateNewsService(ApplicationDbContext context)
+    public UpdateNewsService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -23,14 +23,16 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNews(News news)
     {
-        _context.News.Update(news);
-        await _context.SaveChangesAsync();
+        using var context = _dbContextFactory.CreateDbContext();
+        context.News.Update(news);
+        await context.SaveChangesAsync();
         return new NewsUpdateResultDto { Success = true, Message = "News updated successfully." };
     }
 
     public async Task<ImageUpdateResultDto> UpdateImage(Guid newsId, Guid imageId, IFormFile file)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
         if (news == null || file == null || file.Length == 0)
         {
             return new ImageUpdateResultDto { Message = "Invalid news ID or file." };
@@ -56,17 +58,18 @@ public class UpdateNewsService : IUpdateNewsService
 
         var newImage = new Images { Id = Guid.NewGuid(), ImageUrl = fileName, Alt = fileName };
         news.Images.Add(newImage);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
         return new ImageUpdateResultDto { ImageId = newImage.Id, ImageUrl = newImage.ImageUrl, Message = "Image updated successfully." };
     }
 
     public async Task<NewsUpdateResultDto> UpdateNewsTitle(Guid id, string title)
     {
-        var news = await _context.News.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.FindAsync(id);
         if (news != null)
         {
             news.Title = title;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
             return new NewsUpdateResultDto { Success = true, Message = "News title updated successfully." };
         }
         return new NewsUpdateResultDto { Success = false, Message = "News not found." };
@@ -74,11 +77,12 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNewsPublishDate(Guid id, DateTime publishDate)
     {
-        var news = await _context.News.FindAsync(id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.FindAsync(id);
         if (news != null)
         {
             news.PublishDate = publishDate;
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
             return new NewsUpdateResultDto { Success = true, Message = "Publish date updated successfully." };
         }
         return new NewsUpdateResultDto { Success = false, Message = "News not found." };
@@ -86,7 +90,8 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNewsContentText(Guid newsId, Guid contentId, string text)
     {
-        var news = await _context.News
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News
             .Include(n => n.Content)
             .FirstOrDefaultAsync(n => n.Id == newsId);
         if (news != null)
@@ -95,7 +100,7 @@ public class UpdateNewsService : IUpdateNewsService
             if (content != null)
             {
                 content.Text = text;
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 return new NewsUpdateResultDto { Success = true, Message = "Content text updated successfully." };
             }
             return new NewsUpdateResultDto { Success = false, Message = "Content not found." };

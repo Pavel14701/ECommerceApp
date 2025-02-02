@@ -2,17 +2,18 @@ using Microsoft.EntityFrameworkCore;
 
 public class ReadNewsService : IReadNewsService
 {
-    private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory _dbContextFactory;
 
-    public ReadNewsService(ApplicationDbContext context)
+    public ReadNewsService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task<PagedNewsDto> GetAllNews(int pageNumber, int pageSize)
     {
-        var totalNewsCount = await _context.News.CountAsync();
-        var news = await _context.News
+        using var context = _dbContextFactory.CreateDbContext();
+        var totalNewsCount = await context.News.CountAsync();
+        var news = await context.News
                                 .Include(n => n.Images)
                                 .Include(n => n.Content)
                                 .Skip((pageNumber - 1) * pageSize)
@@ -27,7 +28,8 @@ public class ReadNewsService : IReadNewsService
 
     public async Task<NewsDto> GetNewsById(Guid id)
     {
-        var news = await _context.News
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News
                              .Include(n => n.Images)
                              .Include(n => n.Content)
                              .FirstOrDefaultAsync(n => n.Id == id);

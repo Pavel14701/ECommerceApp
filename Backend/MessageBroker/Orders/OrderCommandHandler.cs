@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-public class OrderHandler : IEventHandler
+public class OrderCommandHandler : IEventHandler
 {
     private readonly IOrderService _orderService;
     private readonly IConsumerInitializer _consumerInitializer;
@@ -13,7 +13,7 @@ public class OrderHandler : IEventHandler
     private readonly ICommandHandler _commandHandler;
     private readonly IModel _channel;
 
-    public OrderHandler(
+    public OrderCommandHandler(
         IOrderService orderService,
         IProcessedEventService processedEventService,
         IConsumerInitializer consumerInitializer,

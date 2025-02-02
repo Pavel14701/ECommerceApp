@@ -6,12 +6,12 @@ using Microsoft.AspNetCore.Http;
 
 public class CreateNewsService : ICreateNewsService
 {
-    private readonly ApplicationDbContext _context;
+        private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public CreateNewsService(ApplicationDbContext context)
+    public CreateNewsService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -22,8 +22,9 @@ public class CreateNewsService : ICreateNewsService
 
     public async Task<NewsCreationResultDto> AddNews(News news)
     {
-        _context.News.Add(news);
-        await _context.SaveChangesAsync();
+        using var context = _dbContextFactory.CreateDbContext();
+        context.News.Add(news);
+        await context.SaveChangesAsync();
         
         return new NewsCreationResultDto
         {
@@ -34,11 +35,12 @@ public class CreateNewsService : ICreateNewsService
 
     public async Task<NewsCreationResultDto> AddImageToNews(Guid newsId, Images image)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
         if (news != null)
         {
             news.Images.Add(image);
-            await _context.SaveChangesAsync();
+            await context.SaveChangesAsync();
             
             return new NewsCreationResultDto
             {
@@ -56,7 +58,8 @@ public class CreateNewsService : ICreateNewsService
 
     public async Task<ImageUploadResultDto> UploadImage(Guid newsId, IFormFile file)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
         if (news == null || file == null || file.Length == 0)
         {
             return new ImageUploadResultDto
@@ -82,7 +85,7 @@ public class CreateNewsService : ICreateNewsService
         };
 
         news.Images.Add(image);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
         
         return new ImageUploadResultDto
         {

@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-public class NewsUpdateHandler : IEventHandler
+public class NewsUpdateCommandHandler : IEventHandler
 {
     private readonly IUpdateNewsService _updateNewsService;
     private readonly IConsumerInitializer _consumerInitializer;
@@ -13,7 +13,7 @@ public class NewsUpdateHandler : IEventHandler
     private readonly ICommandHandler _commandHandler;
     private readonly IModel _channel;
 
-    public NewsUpdateHandler(
+    public NewsUpdateCommandHandler(
         IUpdateNewsService updateNewsService,
         IProcessedEventService processedEventService,
         IConsumerInitializer consumerInitializer,

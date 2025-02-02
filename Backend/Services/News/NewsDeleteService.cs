@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 
 public class DeleteNewsService : IDeleteNewsService
 {
-    private readonly ApplicationDbContext _context;
+    private readonly IDbContextFactory _dbContextFactory;
     private readonly string _uploadPath;
 
-    public DeleteNewsService(ApplicationDbContext context)
+    public DeleteNewsService(IDbContextFactory dbContextFactory)
     {
-        _context = context;
+        _dbContextFactory = dbContextFactory;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -22,7 +22,8 @@ public class DeleteNewsService : IDeleteNewsService
 
     public async Task<NewsDeletionResultDto> DeleteNews(Guid id)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == id);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == id);
         if (news != null)
         {
             foreach (var image in news.Images)
@@ -34,8 +35,8 @@ public class DeleteNewsService : IDeleteNewsService
                 }
             }
 
-            _context.News.Remove(news);
-            await _context.SaveChangesAsync();
+            context.News.Remove(news);
+            await context.SaveChangesAsync();
             return new NewsDeletionResultDto { Success = true, Message = "News deleted successfully." };
         }
         return new NewsDeletionResultDto { Success = false, Message = "News not found." };
@@ -43,7 +44,8 @@ public class DeleteNewsService : IDeleteNewsService
 
     public async Task<ImageUpdateResultDto> RemoveImageFromNews(Guid newsId, Guid imageId)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
         if (news != null)
         {
             var image = news.Images.FirstOrDefault(i => i.Id == imageId);
@@ -56,7 +58,7 @@ public class DeleteNewsService : IDeleteNewsService
                 }
 
                 news.Images.Remove(image);
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
                 return new ImageUpdateResultDto { ImageId = imageId, ImageUrl = image.ImageUrl, Message = "Image removed successfully." };
             }
             return new ImageUpdateResultDto { Message = "Image not found." };
@@ -66,7 +68,8 @@ public class DeleteNewsService : IDeleteNewsService
 
     public async Task<ImageUpdateResultDto> DeleteImage(Guid newsId, Guid imageId)
     {
-        var news = await _context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
+        using var context = _dbContextFactory.CreateDbContext();
+        var news = await context.News.Include(n => n.Images).FirstOrDefaultAsync(n => n.Id == newsId);
         if (news == null)
         {
             return new ImageUpdateResultDto { Message = "News not found." };
@@ -85,7 +88,7 @@ public class DeleteNewsService : IDeleteNewsService
         }
 
         news.Images.Remove(image);
-        await _context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         return new ImageUpdateResultDto { ImageId = imageId, ImageUrl = image.ImageUrl, Message = "Image deleted successfully." };
     }

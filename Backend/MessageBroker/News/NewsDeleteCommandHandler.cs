@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
-public class NewsDeleteEventHandler : IEventHandler
+public class NewsDeleteCommandHandler : IEventHandler
 {
     private readonly IDeleteNewsService _deleteNewsService;
     private readonly IProcessedEventService _processedEventService;
@@ -13,7 +13,7 @@ public class NewsDeleteEventHandler : IEventHandler
     private readonly IConsumerInitializer _consumerInitializer;
     private readonly ICommandHandler _commandHandler;
 
-    public NewsDeleteEventHandler(
+    public NewsDeleteCommandHandler(
         IDeleteNewsService deleteNewsService,
         IProcessedEventService processedEventService,
         IModel channel,
