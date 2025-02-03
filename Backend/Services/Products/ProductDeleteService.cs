@@ -9,8 +9,9 @@ public class ProductDeleteService : IProductDeleteService
     public ProductDeleteService(IDbContextFactory dbContextFactory)
     {
         _dbContextFactory = dbContextFactory;
-        _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-
+        _uploadPath = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "uploads"
+        );
         if (!Directory.Exists(_uploadPath))
         {
             Directory.CreateDirectory(_uploadPath);
@@ -20,10 +21,10 @@ public class ProductDeleteService : IProductDeleteService
     public async Task<ProductDeletionResultDto> DeleteProduct(Guid id)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        
         var commandText = "SELECT * FROM Products WHERE Id = @Id";
-        var product = await context.Products.FromSqlRaw(commandText, new SqlParameter("@Id", id)).Include(p => p.Images).FirstOrDefaultAsync();
-
+        var product = await context.Products.FromSqlRaw(
+            commandText, new SqlParameter("@Id", id)
+        ).Include(p => p.Images).FirstOrDefaultAsync();
         if (product != null)
         {
             foreach (var image in product.Images)
@@ -34,17 +35,16 @@ public class ProductDeleteService : IProductDeleteService
                     File.Delete(filePath);
                 }
             }
-
             commandText = "DELETE FROM Products WHERE Id = @Id";
-            await context.Database.ExecuteSqlRawAsync(commandText, new SqlParameter("@Id", id));
-
+            await context.Database.ExecuteSqlRawAsync(
+                commandText, new SqlParameter("@Id", id)
+            );
             return new ProductDeletionResultDto
             {
                 ProductId = id,
                 Message = $"Product with ID: {id} has been deleted."
             };
         }
-
         return new ProductDeletionResultDto
         {
             ProductId = id,
@@ -57,8 +57,9 @@ public class ProductDeleteService : IProductDeleteService
         using var context = _dbContextFactory.CreateDbContext();
 
         var commandText = "SELECT * FROM Products WHERE Id = @ProductId";
-        var product = await context.Products.FromSqlRaw(commandText, new SqlParameter("@ProductId", productId)).Include(p => p.Images).FirstOrDefaultAsync();
-
+        var product = await context.Products.FromSqlRaw(
+            commandText, new SqlParameter("@ProductId", productId)
+        ).Include(p => p.Images).FirstOrDefaultAsync();
         if (product == null)
         {
             return new ImageDeletionResultDto
@@ -67,7 +68,6 @@ public class ProductDeleteService : IProductDeleteService
                 Message = "Product not found."
             };
         }
-
         var image = product.Images.FirstOrDefault(i => i.Id == imageId);
         if (image == null)
         {
@@ -77,20 +77,22 @@ public class ProductDeleteService : IProductDeleteService
                 Message = "Image not found."
             };
         }
-
         var filePath = Path.Combine(_uploadPath, image.ImageUrl);
         if (File.Exists(filePath))
         {
             File.Delete(filePath);
         }
-
         commandText = "DELETE FROM Images WHERE Id = @ImageId";
-        await context.Database.ExecuteSqlRawAsync(commandText, new SqlParameter("@ImageId", imageId));
-
+        await context.Database.ExecuteSqlRawAsync(
+            commandText, new SqlParameter("@ImageId", imageId)
+        );
         return new ImageDeletionResultDto
         {
             Success = true,
-            Message = $"Image with ID: {imageId} has been deleted from Product with ID: {productId}."
+            Message = $@"
+                Image with ID:{imageId} has been deleted 
+                from Product with ID: {productId}.
+            "
         };
     }
 }

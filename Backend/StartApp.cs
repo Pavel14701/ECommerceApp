@@ -99,6 +99,9 @@ public class Startup
         app.UseAuthentication();
         app.UseAuthorization();
 
+        // Регистрация middleware для скрытия страниц в swagger
+        app.UseMiddleware<HideSwaggerEndpointsMiddleware>();
+
         app.UseOpenApi();
         app.UseSwaggerUi();
 

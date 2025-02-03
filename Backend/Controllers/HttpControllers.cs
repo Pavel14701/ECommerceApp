@@ -1,19 +1,16 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.FileProviders;
-using System.IO;
 
-namespace YourNamespace.Controllers
+namespace NoApi.Controllers
 {
     [Route("")]
     public class HomeController : Controller
     {
         private readonly IFileProvider _fileProvider;
-
         public HomeController(IFileProvider fileProvider)
         {
             _fileProvider = fileProvider;
         }
-
         [HttpGet]
         public IActionResult Index()
         {

@@ -1,8 +1,3 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using System.Threading.Tasks;
-
 public interface IDeleteNewsService
 {
     Task<NewsDeletionResultDto> DeleteNews(Guid id);

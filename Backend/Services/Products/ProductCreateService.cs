@@ -10,8 +10,9 @@ public class ProductCreateService : IProductCreateService
     public ProductCreateService(IDbContextFactory dbContextFactory)
     {
         _dbContextFactory = dbContextFactory;
-        _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-
+        _uploadPath = Path.Combine(
+            Directory.GetCurrentDirectory(), "wwwroot", "uploads"
+        );
         if (!Directory.Exists(_uploadPath))
         {
             Directory.CreateDirectory(_uploadPath);
@@ -21,7 +22,10 @@ public class ProductCreateService : IProductCreateService
     public async Task<ProductCreationResultDto> AddProduct(Product product)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        var commandText = "INSERT INTO Products (Id, Name, SubcategoryId, Price, Stock, Description) VALUES (@Id, @Name, @SubcategoryId, @Price, @Stock, @Description)";
+        var commandText = @"
+            INSERT INTO Products (Id, Name, SubcategoryId, Price, Stock, Description)
+            VALUES (@Id, @Name, @SubcategoryId, @Price, @Stock, @Description)
+        ";
         await context.Database.ExecuteSqlRawAsync(commandText,
             new SqlParameter("@Id", product.Id),
             new SqlParameter("@Name", product.Name),
@@ -30,7 +34,6 @@ public class ProductCreateService : IProductCreateService
             new SqlParameter("@Price", product.Price),
             new SqlParameter("@Stock", product.Stock),
             new SqlParameter("@Description", product.Description));
-        
         return new ProductCreationResultDto
         {
             ProductId = product.Id,
@@ -42,7 +45,12 @@ public class ProductCreateService : IProductCreateService
     {
         using var context = _dbContextFactory.CreateDbContext();
         var productExists = await context.Products
-            .FromSqlRaw("SELECT Id FROM Products WHERE Id = @ProductId", new SqlParameter("@ProductId", productId))
+            .FromSqlRaw(@"
+                SELECT Id 
+                FROM Products 
+                WHERE Id = @ProductId
+            ",
+            new SqlParameter("@ProductId", productId))
             .AnyAsync();
 
         if (!productExists || file == null || file.Length == 0)
@@ -62,7 +70,10 @@ public class ProductCreateService : IProductCreateService
         }
 
         var imageId = Guid.NewGuid();
-        var insertImageCommand = "INSERT INTO Images (Id, ImageUrl, ProductId) VALUES (@Id, @ImageUrl, @ProductId)";
+        var insertImageCommand = @"
+            INSERT INTO Images (Id, ImageUrl, ProductId)
+            VALUES (@Id, @ImageUrl, @ProductId)
+        ";
         await context.Database.ExecuteSqlRawAsync(insertImageCommand,
             new SqlParameter("@Id", imageId),
             new SqlParameter("@ImageUrl", fileName),
@@ -72,7 +83,10 @@ public class ProductCreateService : IProductCreateService
         {
             ImageId = imageId,
             ImageUrl = fileName,
-            Message = $"Image with ID: {imageId} has been uploaded and added to Product with ID: {productId}."
+            Message = $@"
+                Image with ID: {imageId} has been uploaded and
+                added to Product with ID: {productId}.
+            "
         };
     }
 }

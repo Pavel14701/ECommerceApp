@@ -2,16 +2,20 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 public class AuthService : IAuthService
 {
-    private readonly IDbContextFactory _dbContextFactory;
+    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly IConfiguration _configuration;
     private readonly byte[] _key;
 
-    public AuthService(IDbContextFactory dbContextFactory, IConfiguration configuration)
+    public AuthService(
+        IDbContextFactory<ApplicationDbContext> dbContextFactory,
+        IConfiguration configuration
+    )
     {
         _dbContextFactory = dbContextFactory;
         _configuration = configuration;
@@ -22,17 +26,25 @@ public class AuthService : IAuthService
         );
     }
 
-
     public async Task<AuthResultDto> Authenticate(AuthDtoParams _user)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        var user = await context.Users.SingleOrDefaultAsync(
-            u => u.Username == _user.Username
-        );
+        var commandText = @"
+            SELECT * FROM Users 
+            WHERE Username = @Username
+        ";
+        var user = await context.Users
+            .FromSqlRaw(
+                commandText, 
+                new SqlParameter("@Username", _user.Username)
+            )
+            .SingleOrDefaultAsync();
         if (user == null)
         {
-            return new AuthResultDto {
-                Success = false, Message = "Invalid username or password."
+            return new AuthResultDto
+            {
+                Success = false,
+                Message = "Invalid username or password."
             };
         }
         var verifParams = new VerifPasswordDtoParams
@@ -45,7 +57,8 @@ public class AuthService : IAuthService
         {
             return new AuthResultDto
             {
-                Success = false, Message = "Invalid username or password." 
+                Success = false,
+                Message = "Invalid username or password."
             };
         }
         var userParams = new UserDtoParams
@@ -81,16 +94,15 @@ public class AuthService : IAuthService
 
     public TokenResultDto GenerateTokens(UserDtoParams user)
     {
-            var accessToken = GenerateAccessToken(user);
-            var refreshToken = GenerateRefreshToken(user);
-            var tokenResult = new TokenResultDto
-            {
-                AccessToken = accessToken,
-                RefreshToken = refreshToken
-            };
-            return tokenResult;        
+        var accessToken = GenerateAccessToken(user);
+        var refreshToken = GenerateRefreshToken(user);
+        var tokenResult = new TokenResultDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshToken
+        };
+        return tokenResult;
     }
-
 
     public async Task<AuthResultDto> RefreshToken(RefreshDtoParams _token)
     {
@@ -110,13 +122,30 @@ public class AuthService : IAuthService
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId == null)
             {
-                return new AuthResultDto { Success = false, Message = "Invalid refresh token." };
+                return new AuthResultDto { 
+                    Success = false, 
+                    Message = "Invalid refresh token." 
+                };
             }
             using var context = _dbContextFactory.CreateDbContext();
-            var user = await context.Users.FindAsync(Guid.Parse(userId));
+            var commandText = @"
+                SELECT * FROM Users 
+                WHERE Id = @UserId
+            ";
+            var user = await context.Users
+                .FromSqlRaw(
+                    commandText, 
+                    new SqlParameter(
+                        "@UserId", Guid.Parse(userId)
+                    )
+                )
+                .SingleOrDefaultAsync();
             if (user == null)
             {
-                return new AuthResultDto { Success = false, Message = "User not found." };
+                return new AuthResultDto { 
+                    Success = false, 
+                    Message = "User not found." 
+                };
             }
             var userParams = new UserDtoParams
             {
@@ -141,7 +170,10 @@ public class AuthService : IAuthService
         }
         catch (Exception)
         {
-            return new AuthResultDto { Success = false, Message = "Invalid refresh token." };
+            return new AuthResultDto { 
+                Success = false, 
+                Message = "Invalid refresh token." 
+            };
         }
     }
 
@@ -151,7 +183,9 @@ public class AuthService : IAuthService
         var now = DateTime.UtcNow;
         var notBefore = now.AddSeconds(-1);
         var expires = now.AddMinutes(
-            _configuration.GetValue<int>("Jwt:AccessTokenLifetimeMinutes")
+            _configuration.GetValue<int>(
+                "Jwt:AccessTokenLifetimeMinutes"
+            )
         );
         var tokenDescriptor = new SecurityTokenDescriptor
         {
@@ -177,7 +211,9 @@ public class AuthService : IAuthService
         var tokenHandler = new JwtSecurityTokenHandler();
         var now = DateTime.UtcNow;
         var notBefore = now.AddSeconds(-1);
-        var expires = now.AddDays(_configuration.GetValue<int>("Jwt:RefreshTokenLifetimeDays"));
+        var expires = now.AddDays(_configuration.GetValue<int>(
+            "Jwt:RefreshTokenLifetimeDays"
+        ));
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[]
@@ -189,7 +225,8 @@ public class AuthService : IAuthService
             NotBefore = notBefore,
             Expires = expires,
             SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(_key), SecurityAlgorithms.HmacSha256Signature
+                new SymmetricSecurityKey(_key),
+                SecurityAlgorithms.HmacSha256Signature
             )
         };
         var token = tokenHandler.CreateToken(tokenDescriptor);
@@ -197,4 +234,3 @@ public class AuthService : IAuthService
         return tokenString;
     }
 }
-
