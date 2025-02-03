@@ -1,7 +1,5 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.IO;
-using System.Threading.Tasks;
 
 public class ProductDeleteService : IProductDeleteService
 {
@@ -22,7 +20,10 @@ public class ProductDeleteService : IProductDeleteService
     public async Task<ProductDeletionResultDto> DeleteProduct(Guid id)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == id);
+        
+        var commandText = "SELECT * FROM Products WHERE Id = @Id";
+        var product = await context.Products.FromSqlRaw(commandText, new SqlParameter("@Id", id)).Include(p => p.Images).FirstOrDefaultAsync();
+
         if (product != null)
         {
             foreach (var image in product.Images)
@@ -34,8 +35,8 @@ public class ProductDeleteService : IProductDeleteService
                 }
             }
 
-            context.Products.Remove(product);
-            await context.SaveChangesAsync();
+            commandText = "DELETE FROM Products WHERE Id = @Id";
+            await context.Database.ExecuteSqlRawAsync(commandText, new SqlParameter("@Id", id));
 
             return new ProductDeletionResultDto
             {
@@ -54,7 +55,10 @@ public class ProductDeleteService : IProductDeleteService
     public async Task<ImageDeletionResultDto> DeleteImage(Guid productId, Guid imageId)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
+
+        var commandText = "SELECT * FROM Products WHERE Id = @ProductId";
+        var product = await context.Products.FromSqlRaw(commandText, new SqlParameter("@ProductId", productId)).Include(p => p.Images).FirstOrDefaultAsync();
+
         if (product == null)
         {
             return new ImageDeletionResultDto
@@ -80,8 +84,8 @@ public class ProductDeleteService : IProductDeleteService
             File.Delete(filePath);
         }
 
-        product.Images.Remove(image);
-        await context.SaveChangesAsync();
+        commandText = "DELETE FROM Images WHERE Id = @ImageId";
+        await context.Database.ExecuteSqlRawAsync(commandText, new SqlParameter("@ImageId", imageId));
 
         return new ImageDeletionResultDto
         {

@@ -55,6 +55,7 @@ public class RabbitMQInitializer : IRabbitMQInitializer
         _channel.QueueDeclare(queue: "products.update.stock", durable: true, exclusive: false, autoDelete: false, arguments: null);
         _channel.QueueDeclare(queue: "products.update.price", durable: true, exclusive: false, autoDelete: false, arguments: null);
         _channel.QueueDeclare(queue: "products.update.category", durable: true, exclusive: false, autoDelete: false, arguments: null);
+        _channel.QueueDeclare(queue: "products.update.subcategory", durable: true, exclusive: false, autoDelete: false, arguments: null);
         _channel.QueueDeclare(queue: "products.update.name", durable: true, exclusive: false, autoDelete: false, arguments: null);
 
         _channel.QueueDeclare(queue: "users.updatepassword", durable: true, exclusive: false, autoDelete: false, arguments: null);
@@ -103,6 +104,7 @@ public class RabbitMQInitializer : IRabbitMQInitializer
         _channel.QueueBind(queue: "products.update.stock", exchange: "products.exchange", routingKey: "products.update.stock");
         _channel.QueueBind(queue: "products.update.price", exchange: "products.exchange", routingKey: "products.update.price");
         _channel.QueueBind(queue: "products.update.category", exchange: "products.exchange", routingKey: "products.update.category");
+        _channel.QueueBind(queue: "products.update.subcategory", exchange: "products.exchange", routingKey: "products.update.subcategory");
         _channel.QueueBind(queue: "products.update.name", exchange: "products.exchange", routingKey: "products.update.name");
 
 

@@ -71,12 +71,34 @@ public class ProductUpdateCommandHandler : IEventHandler
 
             await _commandHandler.HandleCommandAsync(ea, async () =>
             {
-                var result = await _productUpdateService.UpdateProductCategory(updateProductCategoryCommand.ProductId, updateProductCategoryCommand.Category);
+                var result = await _productUpdateService.UpdateProductCategory(updateProductCategoryCommand.ProductId, updateProductCategoryCommand.CategoryId);
                 await _processedEventService.MarkEventAsProcessed(updateProductCategoryCommand.CommandId);
                 return result;
             });
         }
     }
+
+
+    public async Task HandleUpdateProductSubcategoryCommand(BasicDeliverEventArgs ea)
+    {
+        var dataString = Encoding.UTF8.GetString(ea.Body.ToArray());
+        var updateProductSubcategoryCommand = JsonConvert.DeserializeObject<UpdateProductSubcategoryCommand>(dataString);
+        if (updateProductSubcategoryCommand != null)
+        {
+            if (await _processedEventService.IsEventProcessed(updateProductSubcategoryCommand.CommandId))
+            {
+                return;
+            }
+
+            await _commandHandler.HandleCommandAsync(ea, async () =>
+            {
+                var result = await _productUpdateService.UpdateProductSubcategory(updateProductSubcategoryCommand.ProductId, updateProductSubcategoryCommand.SubcategoryId);
+                await _processedEventService.MarkEventAsProcessed(updateProductSubcategoryCommand.CommandId);
+                return result;
+            });
+        }
+    }
+
 
     public async Task HandleUpdateProductPriceCommand(BasicDeliverEventArgs ea)
     {

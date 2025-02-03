@@ -148,8 +148,6 @@ public class UserService : IUserService
         }
     }
 
-
-
     private string GenerateEmailConfirmationToken(User user)
     {
         var secretKey = _configuration["Jwt:Key"]!;

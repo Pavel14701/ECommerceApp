@@ -57,7 +57,15 @@ public class UpdateProductCategoryCommand
 {
     public Guid CommandId { get; set; }
     public Guid ProductId { get; set; }
-    public required string Category { get; set; }
+    public required Guid CategoryId { get; set; }
+}
+
+
+public class UpdateProductSubcategoryCommand
+{
+    public Guid CommandId { get; set; }
+    public Guid ProductId { get; set; }
+    public required Guid SubcategoryId { get; set; }
 }
 
 public class UpdateProductPriceCommand

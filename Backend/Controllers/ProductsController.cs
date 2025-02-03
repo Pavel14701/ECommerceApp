@@ -159,17 +159,33 @@ public class productsController : ControllerBase
 
     [HttpPut("{id}/category")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> UpdateProductCategory(Guid id, [FromBody] string category)
+    public async Task<IActionResult> UpdateProductCategory(Guid id, [FromBody] Guid categoryId)
     {
         var commandId = Guid.NewGuid();
         var updateProductCategoryCommand = new UpdateProductCategoryCommand
         {
             CommandId = commandId,
             ProductId = id,
-            Category = category
+            CategoryId = categoryId
         };
 
         var result = await _messageSender.SendCommandAndGetResponse<ProductUpdateResultDto>("products.exchange", "products.update.category", updateProductCategoryCommand);
+        return Ok(result);
+    }
+
+    [HttpPut("{id}/subcategory")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateProductSubcategory(Guid id, [FromBody] Guid subcategoryId)
+    {
+        var commandId = Guid.NewGuid();
+        var updateProductSubcategoryCommand = new UpdateProductSubcategoryCommand
+        {
+            CommandId = commandId,
+            ProductId = id,
+            SubcategoryId = subcategoryId
+        };
+
+        var result = await _messageSender.SendCommandAndGetResponse<ProductUpdateResultDto>("products.exchange", "products.update.subcategory", updateProductSubcategoryCommand);
         return Ok(result);
     }
 

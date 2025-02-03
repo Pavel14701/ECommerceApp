@@ -1,8 +1,6 @@
-using Microsoft.AspNetCore.Http;
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+
 
 public class ProductCreateService : IProductCreateService
 {
@@ -23,8 +21,15 @@ public class ProductCreateService : IProductCreateService
     public async Task<ProductCreationResultDto> AddProduct(Product product)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        context.Products.Add(product);
-        await context.SaveChangesAsync();
+        var commandText = "INSERT INTO Products (Id, Name, SubcategoryId, Price, Stock, Description) VALUES (@Id, @Name, @SubcategoryId, @Price, @Stock, @Description)";
+        await context.Database.ExecuteSqlRawAsync(commandText,
+            new SqlParameter("@Id", product.Id),
+            new SqlParameter("@Name", product.Name),
+            new SqlParameter("@CategoryId", product.CategoryId),
+            new SqlParameter("@SubcategoryId", product.SubcategoryId),
+            new SqlParameter("@Price", product.Price),
+            new SqlParameter("@Stock", product.Stock),
+            new SqlParameter("@Description", product.Description));
         
         return new ProductCreationResultDto
         {
@@ -36,8 +41,11 @@ public class ProductCreateService : IProductCreateService
     public async Task<ImageUploadResultDto> UploadImage(Guid productId, IFormFile file)
     {
         using var context = _dbContextFactory.CreateDbContext();
-        var product = await context.Products.Include(p => p.Images).FirstOrDefaultAsync(p => p.Id == productId);
-        if (product == null || file == null || file.Length == 0)
+        var productExists = await context.Products
+            .FromSqlRaw("SELECT Id FROM Products WHERE Id = @ProductId", new SqlParameter("@ProductId", productId))
+            .AnyAsync();
+
+        if (!productExists || file == null || file.Length == 0)
         {
             return new ImageUploadResultDto
             {
@@ -53,21 +61,18 @@ public class ProductCreateService : IProductCreateService
             await file.CopyToAsync(stream);
         }
 
-        var image = new Images
-        {
-            Id = Guid.NewGuid(),
-            ImageUrl = fileName,
-            Alt = fileName
-        };
-
-        product.Images.Add(image);
-        await context.SaveChangesAsync();
+        var imageId = Guid.NewGuid();
+        var insertImageCommand = "INSERT INTO Images (Id, ImageUrl, ProductId) VALUES (@Id, @ImageUrl, @ProductId)";
+        await context.Database.ExecuteSqlRawAsync(insertImageCommand,
+            new SqlParameter("@Id", imageId),
+            new SqlParameter("@ImageUrl", fileName),
+            new SqlParameter("@ProductId", productId));
 
         return new ImageUploadResultDto
         {
-            ImageId = image.Id,
+            ImageId = imageId,
             ImageUrl = fileName,
-            Message = $"Image with ID: {image.Id} has been uploaded and added to Product with ID: {productId}."
+            Message = $"Image with ID: {imageId} has been uploaded and added to Product with ID: {productId}."
         };
     }
 }

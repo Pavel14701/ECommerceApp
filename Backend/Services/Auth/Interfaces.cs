@@ -2,8 +2,8 @@ using System.Threading.Tasks;
 
 public interface IAuthService
 {
-    Task<AuthResultDto> Authenticate(string username, string password);
-    Task<AuthResultDto> RefreshToken(string refreshToken);
+    Task<AuthResultDto> Authenticate(AuthDtoParams _user);
+    Task<AuthResultDto> RefreshToken(RefreshDtoParams _token);
 }
 
 public interface IEmailService
