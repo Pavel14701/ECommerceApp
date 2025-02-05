@@ -13,12 +13,13 @@ public class Startup
 
     public void ConfigureServices(IServiceCollection services)
     {
-        // Настройка базы данных
+        // Регистрация подключения для создания миграций 
         services.AddDbContext<ApplicationDbContext>(options =>
             options.UseNpgsql(Configuration.GetConnectionString("DefaultConnection")));
 
-        // Настройка фабрики DbContext
-        services.AddSingleton<IDbContextFactory, DbContextFactory>();
+        // Регистрация фабрики и итератора сессий
+        services.AddSingleton<ISessionFactory, SessionFactory>();
+        services.AddSingleton<SessionIterator>();
 
         // Настройка Redis
         services.AddSingleton<IConnectionMultiplexer>(provider =>

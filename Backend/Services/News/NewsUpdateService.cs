@@ -1,14 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 public class UpdateNewsService : IUpdateNewsService
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly SessionIterator _sessionIterator;
     private readonly string _uploadPath;
 
-    public UpdateNewsService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
+    public UpdateNewsService(SessionIterator sessionIterator)
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
         _uploadPath = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads"
         );
@@ -20,39 +20,45 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNews(News news)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            UPDATE News
-            SET Title = @Title, Content = @Content, PublishDate = @PublishDate
-            WHERE Id = @Id
-        ";
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", news.Id),
-            new SqlParameter("@Title", news.Title),
-            new SqlParameter("@Content", news.Content),
-            new SqlParameter("@PublishDate", news.PublishDate));
-        return new NewsUpdateResultDto {
-            Success = true, Message = "News updated successfully."
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var commandText = @"
+                UPDATE News
+                SET Title = @Title, Content = @Content, PublishDate = @PublishDate
+                WHERE Id = @Id
+            ";
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", news.Id),
+                new NpgsqlParameter("@Title", news.Title),
+                new NpgsqlParameter("@Content", news.Content),
+                new NpgsqlParameter("@PublishDate", news.PublishDate));
+        });
+        return new NewsUpdateResultDto
+        {
+            Success = true,
+            Message = "News updated successfully."
         };
     }
 
     public async Task<ImageUpdateResultDto> UpdateImage(Guid newsId, Guid imageId, IFormFile file)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @NewsId
-        ";
-        var news = await context.News
-            .FromSqlRaw(
-                commandText, 
-                new SqlParameter("@NewsId", newsId)
-            )
-            .Include(n => n.Images)
-            .FirstOrDefaultAsync();
+        var news = await _sessionIterator.QueryAsync(async context =>
+        {
+            var commandText = @"
+                SELECT * FROM News 
+                WHERE Id = @NewsId
+            ";
+            return await context.News
+                .FromSqlRaw(commandText, new NpgsqlParameter("@NewsId", newsId))
+                .Include(n => n.Images)
+                .FirstOrDefaultAsync();
+        });
         if (news == null || file == null || file.Length == 0)
         {
-            return new ImageUpdateResultDto { Message = "Invalid news ID or file." };
+            return new ImageUpdateResultDto
+            {
+                Message = "Invalid news ID or file."
+            };
         }
         var image = news.Images.FirstOrDefault(i => i.Id == imageId);
         if (image != null)
@@ -62,14 +68,17 @@ public class UpdateNewsService : IUpdateNewsService
             {
                 File.Delete(filePath);
             }
-            var deleteImageCommand = @"
-                DELETE FROM Images 
-                WHERE Id = @ImageId
-            ";
-            await context.Database.ExecuteSqlRawAsync(
-                deleteImageCommand,
-                new SqlParameter("@ImageId", imageId)
-            );
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var deleteImageCommand = @"
+                    DELETE FROM Images 
+                    WHERE Id = @ImageId
+                ";
+                await context.Database.ExecuteSqlRawAsync(
+                    deleteImageCommand,
+                    new NpgsqlParameter("@ImageId", imageId)
+                );
+            });
             news.Images.Remove(image);
         }
         var fileName = $"{Guid.NewGuid()}_{file.FileName}";
@@ -78,56 +87,65 @@ public class UpdateNewsService : IUpdateNewsService
         {
             await file.CopyToAsync(stream);
         }
-        var newImage = new Images {
+        var newImage = new Images
+        {
             Id = Guid.NewGuid(),
             ImageUrl = fileName,
-            Alt = fileName 
+            Alt = fileName
         };
-        var insertImageCommand = @"
-            INSERT INTO Images (Id, ImageUrl, Alt, NewsId)
-            VALUES (@Id, @ImageUrl, @Alt, @NewsId)
-        ";
-        await context.Database.ExecuteSqlRawAsync(insertImageCommand,
-            new SqlParameter("@Id", newImage.Id),
-            new SqlParameter("@ImageUrl", newImage.ImageUrl),
-            new SqlParameter("@Alt", newImage.Alt),
-            new SqlParameter("@NewsId", newsId));
-        return new ImageUpdateResultDto {
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var insertImageCommand = @"
+                INSERT INTO Images (Id, ImageUrl, Alt, NewsId)
+                VALUES (@Id, @ImageUrl, @Alt, @NewsId)
+            ";
+            await context.Database.ExecuteSqlRawAsync(insertImageCommand,
+                new NpgsqlParameter("@Id", newImage.Id),
+                new NpgsqlParameter("@ImageUrl", newImage.ImageUrl),
+                new NpgsqlParameter("@Alt", newImage.Alt),
+                new NpgsqlParameter("@NewsId", newsId));
+        });
+        return new ImageUpdateResultDto
+        {
             ImageId = newImage.Id,
             ImageUrl = newImage.ImageUrl,
-            Message = "Image updated successfully." 
+            Message = "Image updated successfully."
         };
     }
 
     public async Task<NewsUpdateResultDto> UpdateNewsTitle(Guid id, string title)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @Id
-        ";
-        var news = await context.News
-            .FromSqlRaw(
-                commandText,
-                new SqlParameter("@Id", id)
-            )
-            .FirstOrDefaultAsync();
-        if (news != null)
+        var news = await _sessionIterator.QueryAsync(async context =>
         {
-            var updateTitleCommand = @"
-                UPDATE News 
-                SET Title = @Title 
+            var commandText = @"
+                SELECT * FROM News 
                 WHERE Id = @Id
             ";
-            await context.Database.ExecuteSqlRawAsync(updateTitleCommand,
-                new SqlParameter("@Title", title),
-                new SqlParameter("@Id", id));
-            return new NewsUpdateResultDto {
-                Success = true, 
+            return await context.News
+                .FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
+                .FirstOrDefaultAsync();
+        });
+        if (news != null)
+        {
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var updateTitleCommand = @"
+                    UPDATE News 
+                    SET Title = @Title 
+                    WHERE Id = @Id
+                ";
+                await context.Database.ExecuteSqlRawAsync(updateTitleCommand,
+                    new NpgsqlParameter("@Title", title),
+                    new NpgsqlParameter("@Id", id));
+            });
+            return new NewsUpdateResultDto
+            {
+                Success = true,
                 Message = "News title updated successfully."
             };
         }
-        return new NewsUpdateResultDto {
+        return new NewsUpdateResultDto
+        {
             Success = false,
             Message = "News not found."
         };
@@ -135,33 +153,37 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNewsPublishDate(Guid id, DateTime publishDate)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @Id
-        ";
-        var news = await context.News
-            .FromSqlRaw(
-                commandText,
-                new SqlParameter("@Id", id)
-            )
-            .FirstOrDefaultAsync();
-        if (news != null)
+        var news = await _sessionIterator.QueryAsync(async context =>
         {
-            var updateDateCommand = @"
-                UPDATE News 
-                SET PublishDate = @PublishDate
+            var commandText = @"
+                SELECT * FROM News 
                 WHERE Id = @Id
             ";
-            await context.Database.ExecuteSqlRawAsync(updateDateCommand,
-                new SqlParameter("@PublishDate", publishDate),
-                new SqlParameter("@Id", id));
-            return new NewsUpdateResultDto {
-                Success = true, 
+            return await context.News
+                .FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
+                .FirstOrDefaultAsync();
+        });
+        if (news != null)
+        {
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var updateDateCommand = @"
+                    UPDATE News 
+                    SET PublishDate = @PublishDate
+                    WHERE Id = @Id
+                ";
+                await context.Database.ExecuteSqlRawAsync(updateDateCommand,
+                    new NpgsqlParameter("@PublishDate", publishDate),
+                    new NpgsqlParameter("@Id", id));
+            });
+            return new NewsUpdateResultDto
+            {
+                Success = true,
                 Message = "Publish date updated successfully."
             };
         }
-        return new NewsUpdateResultDto {
+        return new NewsUpdateResultDto
+        {
             Success = false,
             Message = "News not found."
         };
@@ -169,46 +191,49 @@ public class UpdateNewsService : IUpdateNewsService
 
     public async Task<NewsUpdateResultDto> UpdateNewsContentText(Guid newsId, Guid contentId, string text)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @NewsId
-        ";
-        var news = await context.News
-            .FromSqlRaw(
-                commandText, 
-                new SqlParameter("@NewsId", newsId)
-            )
-            .Include(n => n.Content)
-            .FirstOrDefaultAsync();
+        var news = await _sessionIterator.QueryAsync(async context =>
+        {
+            var commandText = @"
+                SELECT * FROM News 
+                WHERE Id = @NewsId
+            ";
+            return await context.News
+                .FromSqlRaw(commandText, new NpgsqlParameter("@NewsId", newsId))
+                .Include(n => n.Content)
+                .FirstOrDefaultAsync();
+        });
         if (news != null)
         {
-            var content = news.Content.FirstOrDefault(
-                c => c.Id == contentId
-            );
+            var content = news.Content.FirstOrDefault(c => c.Id == contentId);
             if (content != null)
             {
-                var updateContentCommand = @"
-                    UPDATE Content 
-                    SET Text = @Text 
-                    WHERE Id = @ContentId
-                ";
-                await context.Database.ExecuteSqlRawAsync(updateContentCommand,
-                    new SqlParameter("@Text", text),
-                    new SqlParameter("@ContentId", contentId));
-                return new NewsUpdateResultDto {
-                    Success = true, 
-                    Message = "Content text updated successfully." 
+                await _sessionIterator.ExecuteAsync(async context =>
+                {
+                    var updateContentCommand = @"
+                        UPDATE Content 
+                        SET Text = @Text 
+                        WHERE Id = @ContentId
+                    ";
+                    await context.Database.ExecuteSqlRawAsync(updateContentCommand,
+                        new NpgsqlParameter("@Text", text),
+                        new NpgsqlParameter("@ContentId", contentId));
+                });
+                return new NewsUpdateResultDto
+                {
+                    Success = true,
+                    Message = "Content text updated successfully."
                 };
             }
-            return new NewsUpdateResultDto {
+            return new NewsUpdateResultDto
+            {
                 Success = false,
-                Message = "Content not found." 
+                Message = "Content not found."
             };
         }
-        return new NewsUpdateResultDto {
-            Success = false, 
-            Message = "News not found." 
+        return new NewsUpdateResultDto
+        {
+            Success = false,
+            Message = "News not found."
         };
     }
 }

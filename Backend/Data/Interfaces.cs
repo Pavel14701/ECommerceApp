@@ -1,4 +1,5 @@
-public interface IDbContextFactory
+public interface ISessionFactory
 {
-    ApplicationDbContext CreateDbContext();
+    ApplicationDbContext GetSession();
+    void ReturnSession(ApplicationDbContext context);
 }

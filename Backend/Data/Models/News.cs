@@ -1,17 +1,81 @@
-using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
+public interface ITrackable
+{
+    DateTime PublishDatetime { get; set; }
+    DateTime UpdateDatetime { get; set; }
+}
+
+
+[Table("news_content")]
 public class Content
 {
-    public Guid Id { get; set; }
-    public required string Text { get; set;}
+    [Key]
+    [Column("id", TypeName = "uuid")]
+    public required Guid Id { get; set; }
+
+    [Column("text", TypeName = "varchar(4096)")]
+    public string? Text { get; set; }
+
+    [Required]
+    [Column("block_number")]
+    public required int BlockNumber { get; set; }
+
+    [InverseProperty("Content")]
+    public List<NewsRelationships> NewsRelationships { get; set; } = new List<NewsRelationships>();
 }
 
-public class News
+
+
+
+[Table("news")]
+public class News : ITrackable
 {
+    [Key]
+    [Column("id", TypeName = "uuid")]
     public Guid Id { get; set; }
+
+    [Required]
+    [Column("news_title", TypeName = "varchar(255)")]
     public required string Title { get; set; }
-    public List<Images> Images { get; set; } = new List<Images>();
-    public List<Content> Content { get; set; } = new List<Content>();
-    public DateTime PublishDate { get; set; }
+
+    [Column("publish_datetime", TypeName = "timestamp")]
+    public DateTime PublishDatetime { get; set; }
+
+    [Column("update_datetime", TypeName = "timestamp")]
+    public DateTime UpdateDatetime { get; set; }
+
+    [InverseProperty("News")]
+    public List<NewsImageRelationship> NewsImageRelationships { get; set; } = new List<NewsImageRelationship>();
+
+    [InverseProperty("News")]
+    public List<NewsRelationships> NewsRelationships { get; set; } = new List<NewsRelationships>();
 }
+
+
+[Table("news_relationships")]
+public class  NewsRelationships
+{
+    [Key]
+    [Column("id", TypeName = "uuid")]
+    public Guid Id { get; set; }
+
+    [Required]
+    [ForeignKey("ContentId")]
+    [Column("fk_content", TypeName = "uuid")]
+    public required Guid ContentId { get; set; }
+
+    [Required]
+    [ForeignKey("NewsId")]
+    [Column("fk_news", TypeName = "uuid")]
+    public required Guid NewsId { get; set; }
+
+    [InverseProperty("NewsRelationships")]
+    public required Content Content { get; set; }
+
+    [InverseProperty("NewsRelationships")]
+    public required News News { get; set; }
+
+}
+

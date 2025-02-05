@@ -1,31 +1,35 @@
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 public class ReadNewsService : IReadNewsService
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
-    public ReadNewsService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
+    private readonly SessionIterator _sessionIterator;
+
+    public ReadNewsService(SessionIterator sessionIterator)
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
     }
 
     public async Task<PagedNewsDto> GetAllNews(int pageNumber, int pageSize)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var totalNewsCount = await context.News.CountAsync();
+        var countCommandText = "SELECT COUNT(*) FROM News";
+        var totalNewsCount = await _sessionIterator.ExecuteScalarAsync(countCommandText);
         var commandText = @"
             SELECT * FROM News
             ORDER BY PublishDate DESC
             OFFSET @Offset ROWS 
             FETCH NEXT @PageSize ROWS ONLY
         ";
-        var news = await context.News
-            .FromSqlRaw(commandText, 
-                new SqlParameter("@Offset", (pageNumber - 1) * pageSize), 
-                new SqlParameter("@PageSize", pageSize))
-            .Include(n => n.Images)
-            .Include(n => n.Content)
-            .ToListAsync();
+        var news = await _sessionIterator.QueryAsync(async context =>
+        {
+            return await context.News
+                .FromSqlRaw(commandText, 
+                    new NpgsqlParameter("@Offset", (pageNumber - 1) * pageSize), 
+                    new NpgsqlParameter("@PageSize", pageSize))
+                .Include(n => n.Images)
+                .Include(n => n.Content)
+                .ToListAsync();
+        });
         return new PagedNewsDto
         {
             News = news,
@@ -35,19 +39,18 @@ public class ReadNewsService : IReadNewsService
 
     public async Task<NewsDto> GetNewsById(Guid id)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = @"
             SELECT * FROM News 
             WHERE Id = @Id
         ";
-        var news = await context.News
-            .FromSqlRaw(
-                commandText, 
-                new SqlParameter("@Id", id)
-            )
-            .Include(n => n.Images)
-            .Include(n => n.Content)
-            .FirstOrDefaultAsync();
+        var news = await _sessionIterator.QueryAsync(async context =>
+        {
+            return await context.News
+                .FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
+                .Include(n => n.Images)
+                .Include(n => n.Content)
+                .FirstOrDefaultAsync();
+        });
         return new NewsDto
         {
             News = news

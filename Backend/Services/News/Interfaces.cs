@@ -20,9 +20,5 @@ public interface IReadNewsService
     Task<NewsDto> GetNewsById(Guid id);
 }
 
-public interface ICreateNewsService
-{
-    Task<NewsCreationResultDto> AddNews(News news);
-    Task<NewsCreationResultDto> AddImageToNews(Guid newsId, Images image);
-    Task<ImageUploadResultDto> UploadImage(Guid newsId, IFormFile file);
-}
+
+

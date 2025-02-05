@@ -1,14 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 
 public class ProductUpdateService : IProductUpdateService
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly SessionIterator _sessionIterator;
     private readonly string _uploadPath;
 
-    public ProductUpdateService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
+    public ProductUpdateService(SessionIterator sessionIterator)
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
         _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
 
         if (!Directory.Exists(_uploadPath))
@@ -19,19 +19,21 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProduct(Product product)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = @"
             UPDATE Products
             SET Name = @Name, SubcategoryId = @SubcategoryId, Price = @Price, Stock = @Stock, Description = @Description
             WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", product.Id),
-            new SqlParameter("@Name", product.Name),
-            new SqlParameter("@SubcategoryId", product.SubcategoryId),
-            new SqlParameter("@Price", product.Price),
-            new SqlParameter("@Stock", product.Stock),
-            new SqlParameter("@Description", product.Description));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", product.Id),
+                new NpgsqlParameter("@Name", product.Name),
+                new NpgsqlParameter("@SubcategoryId", product.SubcategoryId),
+                new NpgsqlParameter("@Price", product.Price),
+                new NpgsqlParameter("@Stock", product.Stock),
+                new NpgsqlParameter("@Description", product.Description));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -42,12 +44,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductName(Guid id, string name)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET Name = @Name WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@Name", name));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@Name", name));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -58,12 +62,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductCategory(Guid id, Guid categoryId)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET CategoryId = @CategoryId WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@CategoryId", categoryId));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@CategoryId", categoryId));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -74,12 +80,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductSubcategory(Guid id, Guid subcategoryId)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET SubcategoryId = @SubcategoryId WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@SubcategoryId", subcategoryId));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@SubcategoryId", subcategoryId));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -90,12 +98,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductPrice(Guid id, decimal price)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET Price = @Price WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@Price", price));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@Price", price));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -106,12 +116,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductStock(Guid id, int stock)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET Stock = @Stock WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@Stock", stock));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@Stock", stock));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -122,12 +134,14 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ProductUpdateResultDto> UpdateProductDescription(Guid id, string description)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = "UPDATE Products SET Description = @Description WHERE Id = @Id";
 
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", id),
-            new SqlParameter("@Description", description));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", id),
+                new NpgsqlParameter("@Description", description));
+        });
 
         return new ProductUpdateResultDto
         {
@@ -138,18 +152,20 @@ public class ProductUpdateService : IProductUpdateService
 
     public async Task<ImageUpdateResultDto> UpdateProductImage(Guid productId, Guid imageId, IFormFile file)
     {
-        using var context = _dbContextFactory.CreateDbContext();
         var commandText = @"
             SELECT p.Id AS ProductId, i.Id AS ImageId, i.ImageUrl
             FROM Products p
             JOIN Images i ON p.Id = i.ProductId
             WHERE p.Id = @ProductId AND i.Id = @ImageId";
 
-        var result = await context.Images
-            .FromSqlRaw(commandText,
-                new SqlParameter("@ProductId", productId),
-                new SqlParameter("@ImageId", imageId))
-            .ToListAsync();
+        var result = await _sessionIterator.QueryAsync(async context =>
+        {
+            return await context.Images
+                .FromSqlRaw(commandText,
+                    new NpgsqlParameter("@ProductId", productId),
+                    new NpgsqlParameter("@ImageId", imageId))
+                .ToListAsync();
+        });
 
         if (result.Count == 0 || file == null || file.Length == 0)
         {
@@ -167,8 +183,11 @@ public class ProductUpdateService : IProductUpdateService
         }
 
         var deleteCommandText = "DELETE FROM Images WHERE Id = @ImageId";
-        await context.Database.ExecuteSqlRawAsync(deleteCommandText,
-            new SqlParameter("@ImageId", imageId));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(deleteCommandText,
+                new NpgsqlParameter("@ImageId", imageId));
+        });
 
         var fileName = $"{Guid.NewGuid()}_{file.FileName}";
         var newFilePath = Path.Combine(_uploadPath, fileName);
@@ -181,10 +200,13 @@ public class ProductUpdateService : IProductUpdateService
             INSERT INTO Images (Id, ImageUrl, ProductId) 
             VALUES (@Id, @ImageUrl, @ProductId)";
         var newImageId = Guid.NewGuid();
-        await context.Database.ExecuteSqlRawAsync(insertCommandText,
-            new SqlParameter("@Id", newImageId),
-            new SqlParameter("@ImageUrl", fileName),
-            new SqlParameter("@ProductId", productId));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            await context.Database.ExecuteSqlRawAsync(insertCommandText,
+                new NpgsqlParameter("@Id", newImageId),
+                new NpgsqlParameter("@ImageUrl", fileName),
+                new NpgsqlParameter("@ProductId", productId));
+        });
 
         return new ImageUpdateResultDto
         {

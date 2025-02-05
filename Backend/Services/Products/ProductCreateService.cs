@@ -1,15 +1,14 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
-
+using Npgsql;
 
 public class ProductCreateService : IProductCreateService
 {
-    private readonly IDbContextFactory _dbContextFactory;
+    private readonly SessionIterator _sessionIterator;
     private readonly string _uploadPath;
 
-    public ProductCreateService(IDbContextFactory dbContextFactory)
+    public ProductCreateService(SessionIterator sessionIterator)
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
         _uploadPath = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads"
         );
@@ -21,19 +20,22 @@ public class ProductCreateService : IProductCreateService
 
     public async Task<ProductCreationResultDto> AddProduct(Product product)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            INSERT INTO Products (Id, Name, SubcategoryId, Price, Stock, Description)
-            VALUES (@Id, @Name, @SubcategoryId, @Price, @Stock, @Description)
-        ";
-        await context.Database.ExecuteSqlRawAsync(commandText,
-            new SqlParameter("@Id", product.Id),
-            new SqlParameter("@Name", product.Name),
-            new SqlParameter("@CategoryId", product.CategoryId),
-            new SqlParameter("@SubcategoryId", product.SubcategoryId),
-            new SqlParameter("@Price", product.Price),
-            new SqlParameter("@Stock", product.Stock),
-            new SqlParameter("@Description", product.Description));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var commandText = @"
+                INSERT INTO Products (Id, Name, SubcategoryId, Price, Stock, Description)
+                VALUES (@Id, @Name, @SubcategoryId, @Price, @Stock, @Description)
+            ";
+            await context.Database.ExecuteSqlRawAsync(commandText,
+                new NpgsqlParameter("@Id", product.Id),
+                new NpgsqlParameter("@Name", product.Name),
+                new NpgsqlParameter("@CategoryId", product.CategoryId),
+                new NpgsqlParameter("@SubcategoryId", product.SubcategoryId),
+                new NpgsqlParameter("@Price", product.Price),
+                new NpgsqlParameter("@Stock", product.Stock),
+                new NpgsqlParameter("@Description", product.Description));
+        });
+
         return new ProductCreationResultDto
         {
             ProductId = product.Id,
@@ -43,15 +45,17 @@ public class ProductCreateService : IProductCreateService
 
     public async Task<ImageUploadResultDto> UploadImage(Guid productId, IFormFile file)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var productExists = await context.Products
-            .FromSqlRaw(@"
-                SELECT Id 
-                FROM Products 
-                WHERE Id = @ProductId
-            ",
-            new SqlParameter("@ProductId", productId))
-            .AnyAsync();
+        var productExists = await _sessionIterator.QueryAsync(async context =>
+        {
+            return await context.Products
+                .FromSqlRaw(@"
+                    SELECT Id 
+                    FROM Products 
+                    WHERE Id = @ProductId
+                ",
+                new NpgsqlParameter("@ProductId", productId))
+                .AnyAsync();
+        });
 
         if (!productExists || file == null || file.Length == 0)
         {
@@ -70,14 +74,17 @@ public class ProductCreateService : IProductCreateService
         }
 
         var imageId = Guid.NewGuid();
-        var insertImageCommand = @"
-            INSERT INTO Images (Id, ImageUrl, ProductId)
-            VALUES (@Id, @ImageUrl, @ProductId)
-        ";
-        await context.Database.ExecuteSqlRawAsync(insertImageCommand,
-            new SqlParameter("@Id", imageId),
-            new SqlParameter("@ImageUrl", fileName),
-            new SqlParameter("@ProductId", productId));
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var insertImageCommand = @"
+                INSERT INTO Images (Id, ImageUrl, ProductId)
+                VALUES (@Id, @ImageUrl, @ProductId)
+            ";
+            await context.Database.ExecuteSqlRawAsync(insertImageCommand,
+                new NpgsqlParameter("@Id", imageId),
+                new NpgsqlParameter("@ImageUrl", fileName),
+                new NpgsqlParameter("@ProductId", productId));
+        });
 
         return new ImageUploadResultDto
         {

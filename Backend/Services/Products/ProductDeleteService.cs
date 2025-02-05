@@ -1,14 +1,14 @@
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 public class ProductDeleteService : IProductDeleteService
 {
-    private readonly IDbContextFactory _dbContextFactory;
+    private readonly SessionIterator _sessionIterator;
     private readonly string _uploadPath;
 
-    public ProductDeleteService(IDbContextFactory dbContextFactory)
+    public ProductDeleteService(SessionIterator sessionIterator)
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
         _uploadPath = Path.Combine(
             Directory.GetCurrentDirectory(), "wwwroot", "uploads"
         );
@@ -20,11 +20,14 @@ public class ProductDeleteService : IProductDeleteService
 
     public async Task<ProductDeletionResultDto> DeleteProduct(Guid id)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = "SELECT * FROM Products WHERE Id = @Id";
-        var product = await context.Products.FromSqlRaw(
-            commandText, new SqlParameter("@Id", id)
-        ).Include(p => p.Images).FirstOrDefaultAsync();
+        var product = await _sessionIterator.QueryAsync(async context =>
+        {
+            var commandText = "SELECT * FROM Products WHERE Id = @Id";
+            return await context.Products.FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync();
+        });
+
         if (product != null)
         {
             foreach (var image in product.Images)
@@ -35,16 +38,20 @@ public class ProductDeleteService : IProductDeleteService
                     File.Delete(filePath);
                 }
             }
-            commandText = "DELETE FROM Products WHERE Id = @Id";
-            await context.Database.ExecuteSqlRawAsync(
-                commandText, new SqlParameter("@Id", id)
-            );
+
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var commandText = "DELETE FROM Products WHERE Id = @Id";
+                await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@Id", id));
+            });
+
             return new ProductDeletionResultDto
             {
                 ProductId = id,
                 Message = $"Product with ID: {id} has been deleted."
             };
         }
+
         return new ProductDeletionResultDto
         {
             ProductId = id,
@@ -54,12 +61,13 @@ public class ProductDeleteService : IProductDeleteService
 
     public async Task<ImageDeletionResultDto> DeleteImage(Guid productId, Guid imageId)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-
-        var commandText = "SELECT * FROM Products WHERE Id = @ProductId";
-        var product = await context.Products.FromSqlRaw(
-            commandText, new SqlParameter("@ProductId", productId)
-        ).Include(p => p.Images).FirstOrDefaultAsync();
+        var product = await _sessionIterator.QueryAsync(async context =>
+        {
+            var commandText = "SELECT * FROM Products WHERE Id = @ProductId";
+            return await context.Products.FromSqlRaw(commandText, new NpgsqlParameter("@ProductId", productId))
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync();
+        });
         if (product == null)
         {
             return new ImageDeletionResultDto
@@ -82,10 +90,11 @@ public class ProductDeleteService : IProductDeleteService
         {
             File.Delete(filePath);
         }
-        commandText = "DELETE FROM Images WHERE Id = @ImageId";
-        await context.Database.ExecuteSqlRawAsync(
-            commandText, new SqlParameter("@ImageId", imageId)
-        );
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var commandText = "DELETE FROM Images WHERE Id = @ImageId";
+            await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@ImageId", imageId));
+        });
         return new ImageDeletionResultDto
         {
             Success = true,

@@ -2,80 +2,100 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 
 public class AuthService : IAuthService
 {
-    private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
+    private readonly SessionIterator _sessionIterator;
     private readonly IConfiguration _configuration;
     private readonly byte[] _key;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
-        IDbContextFactory<ApplicationDbContext> dbContextFactory,
-        IConfiguration configuration
+        SessionIterator sessionIterator,
+        IConfiguration configuration,
+        ILogger<AuthService> logger
     )
     {
-        _dbContextFactory = dbContextFactory;
+        _sessionIterator = sessionIterator;
         _configuration = configuration;
         _key = Encoding.ASCII.GetBytes(
             _configuration["Jwt:Key"] ?? throw new InvalidOperationException(
                 "JWT key is not configured."
             )
         );
+        _logger = logger;
     }
 
     public async Task<AuthResultDto> Authenticate(AuthDtoParams _user)
     {
-        using var context = _dbContextFactory.CreateDbContext();
-        var commandText = @"
-            SELECT * FROM Users 
-            WHERE Username = @Username
-        ";
-        var user = await context.Users
-            .FromSqlRaw(
-                commandText, 
-                new SqlParameter("@Username", _user.Username)
-            )
-            .SingleOrDefaultAsync();
-        if (user == null)
+        try
         {
+            var commandText = @"
+                SELECT * FROM public.""Users""
+                WHERE Username = @Username
+            ";
+            var parameters = new[]
+            {
+                new NpgsqlParameter("@Username", _user.Username)
+            };
+            var user = await _sessionIterator.QueryAsync(async context =>
+            {
+                return await context.Users
+                    .FromSqlRaw(commandText, parameters)
+                    .SingleOrDefaultAsync();
+            });
+            if (user == null)
+            {
+                _logger.LogWarning("Invalid username or password for user: {Username}", _user.Username);
+                return new AuthResultDto
+                {
+                    Success = false,
+                    Message = "Invalid username or password."
+                };
+            }
+            var verifParams = new VerifPasswordDtoParams
+            {
+                Password = _user.Password,
+                StoredHash = user.PasswordHash,
+                StoredSalt = user.Salt
+            };
+            if (!VerifyPasswordHash(verifParams))
+            {
+                _logger.LogWarning("Invalid password for user: {Username}", _user.Username);
+                return new AuthResultDto
+                {
+                    Success = false,
+                    Message = "Invalid username or password."
+                };
+            }
+            var userParams = new UserDtoParams
+            {
+                Id = user.Id.ToString(),
+                Username = user.Username,
+                Email = user.Email
+            };
+            var tokens = GenerateTokens(userParams);
+            _logger.LogInformation("User authenticated successfully: {Username}", user.Username);
+            return new AuthResultDto
+            {
+                Success = true,
+                User = user,
+                Tokens = tokens,
+                Message = "User authenticated successfully."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An error occurred during authentication for user: {Username}", _user.Username);
             return new AuthResultDto
             {
                 Success = false,
-                Message = "Invalid username or password."
+                Message = "An error occurred during authentication."
             };
         }
-        var verifParams = new VerifPasswordDtoParams
-        {
-            Password = _user.Password,
-            StoredHash = user.PasswordHash,
-            StoredSalt = user.Salt
-        };
-        if (!VerifyPasswordHash(verifParams))
-        {
-            return new AuthResultDto
-            {
-                Success = false,
-                Message = "Invalid username or password."
-            };
-        }
-        var userParams = new UserDtoParams
-        {
-            Id = user.Id.ToString(),
-            Username = user.Username,
-            Email = user.Email
-        };
-        var tokens = GenerateTokens(userParams);
-        var authResult = new AuthResultDto
-        {
-            Success = true,
-            User = user,
-            Tokens = tokens,
-            Message = "User authenticated successfully."
-        };
-        return authResult;
     }
 
     private bool VerifyPasswordHash(VerifPasswordDtoParams _params)
@@ -88,6 +108,7 @@ public class AuthService : IAuthService
             var saltedHash = sha256.ComputeHash(saltedPassword);
             var inputPasswordHash = Convert.ToBase64String(saltedHash);
             var result = inputPasswordHash == _params.StoredHash;
+            _logger.LogInformation("Password verification result: {Result}", result);
             return result;
         }
     }
@@ -96,12 +117,12 @@ public class AuthService : IAuthService
     {
         var accessToken = GenerateAccessToken(user);
         var refreshToken = GenerateRefreshToken(user);
-        var tokenResult = new TokenResultDto
+        _logger.LogInformation("Tokens generated for user: {Username}", user.Username);
+        return new TokenResultDto
         {
             AccessToken = accessToken,
             RefreshToken = refreshToken
         };
-        return tokenResult;
     }
 
     public async Task<AuthResultDto> RefreshToken(RefreshDtoParams _token)
@@ -122,29 +143,34 @@ public class AuthService : IAuthService
             var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
             if (userId == null)
             {
-                return new AuthResultDto { 
-                    Success = false, 
-                    Message = "Invalid refresh token." 
+                _logger.LogWarning("Invalid refresh token.");
+                return new AuthResultDto
+                {
+                    Success = false,
+                    Message = "Invalid refresh token."
                 };
             }
-            using var context = _dbContextFactory.CreateDbContext();
             var commandText = @"
-                SELECT * FROM Users 
+                SELECT * FROM public.""Users"" 
                 WHERE Id = @UserId
             ";
-            var user = await context.Users
-                .FromSqlRaw(
-                    commandText, 
-                    new SqlParameter(
-                        "@UserId", Guid.Parse(userId)
-                    )
-                )
-                .SingleOrDefaultAsync();
+            var parameters = new[]
+            {
+                new NpgsqlParameter("@UserId", Guid.Parse(userId))
+            };
+            var user = await _sessionIterator.QueryAsync(async context =>
+            {
+                return await context.Users
+                    .FromSqlRaw(commandText, parameters)
+                    .SingleOrDefaultAsync();
+            });
             if (user == null)
             {
-                return new AuthResultDto { 
-                    Success = false, 
-                    Message = "User not found." 
+                _logger.LogWarning("User not found for refresh token: {UserId}", userId);
+                return new AuthResultDto
+                {
+                    Success = false,
+                    Message = "User not found."
                 };
             }
             var userParams = new UserDtoParams
@@ -155,7 +181,8 @@ public class AuthService : IAuthService
             };
             var newAccessToken = GenerateAccessToken(userParams);
             var newRefreshToken = GenerateRefreshToken(userParams);
-            var refreshResult = new AuthResultDto
+            _logger.LogInformation("Token refreshed successfully for user: {Username}", user.Username);
+            return new AuthResultDto
             {
                 Success = true,
                 User = user,
@@ -166,13 +193,14 @@ public class AuthService : IAuthService
                 },
                 Message = "Token refreshed successfully."
             };
-            return refreshResult;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return new AuthResultDto { 
-                Success = false, 
-                Message = "Invalid refresh token." 
+            _logger.LogError(ex, "An error occurred during token refresh.");
+            return new AuthResultDto
+            {
+                Success = false,
+                Message = "Invalid refresh token."
             };
         }
     }
@@ -183,9 +211,7 @@ public class AuthService : IAuthService
         var now = DateTime.UtcNow;
         var notBefore = now.AddSeconds(-1);
         var expires = now.AddMinutes(
-            _configuration.GetValue<int>(
-                "Jwt:AccessTokenLifetimeMinutes"
-            )
+            _configuration.GetValue<int>("Jwt:AccessTokenLifetimeMinutes")
         );
         var tokenDescriptor = new SecurityTokenDescriptor
         {
@@ -202,8 +228,8 @@ public class AuthService : IAuthService
             )
         };
         var token = tokenHandler.CreateToken(tokenDescriptor);
-        var tokenString = tokenHandler.WriteToken(token);
-        return tokenString;
+        _logger.LogInformation("Access token generated for user: {Username}", user.Username);
+        return tokenHandler.WriteToken(token);
     }
 
     private string GenerateRefreshToken(UserDtoParams user)
@@ -211,9 +237,9 @@ public class AuthService : IAuthService
         var tokenHandler = new JwtSecurityTokenHandler();
         var now = DateTime.UtcNow;
         var notBefore = now.AddSeconds(-1);
-        var expires = now.AddDays(_configuration.GetValue<int>(
-            "Jwt:RefreshTokenLifetimeDays"
-        ));
+        var expires = now.AddDays(
+            _configuration.GetValue<int>("Jwt:RefreshTokenLifetimeDays")
+        );
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[]
@@ -230,7 +256,7 @@ public class AuthService : IAuthService
             )
         };
         var token = tokenHandler.CreateToken(tokenDescriptor);
-        var tokenString = tokenHandler.WriteToken(token);
-        return tokenString;
+        _logger.LogInformation("Refresh token generated for user: {Username}", user.Username);
+        return tokenHandler.WriteToken(token);
     }
 }

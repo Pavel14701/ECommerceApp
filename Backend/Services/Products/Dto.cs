@@ -47,9 +47,3 @@ public class ProductUpdateResultDto
     public required string Message { get; set; }
 }
 
-public class ImageUpdateResultDto
-{
-    public Guid? ImageId { get; set; }
-    public string?  ImageUrl { get; set; } = string.Empty;
-    public required string Message { get; set; } = string.Empty;
-}
