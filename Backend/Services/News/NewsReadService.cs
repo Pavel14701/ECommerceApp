@@ -1,59 +1,71 @@
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
+public class NewsPreviewResultsDto : Result
+{
+    public List<NewsPreviewDto>? Previews { get; set; }
+}
+
+public class NewsDetailsResultDto : Result
+{
+    public NewsDetailsDto? Details { get; set; }
+}
+
+public interface IReadNewsService
+{
+    Task<NewsPreviewResultsDto> GetPaginatedNews(PaginationParamsDto paramsDto);
+    Task<NewsDetailsResultDto> GetNews(Guid id);
+}
+
 
 public class ReadNewsService : IReadNewsService
 {
-    private readonly SessionIterator _sessionIterator;
+    private readonly ReadCrud _readCrud;
 
-    public ReadNewsService(SessionIterator sessionIterator)
+    public ReadNewsService(
+        ReadCrud readCrud
+    )
     {
-        _sessionIterator = sessionIterator;
+        _readCrud = readCrud;
     }
 
-    public async Task<PagedNewsDto> GetAllNews(int pageNumber, int pageSize)
+
+    public async Task<NewsPreviewResultsDto> GetPaginatedNews(PaginationParamsDto paramsDto)
     {
-        var countCommandText = "SELECT COUNT(*) FROM News";
-        var totalNewsCount = await _sessionIterator.ExecuteScalarAsync(countCommandText);
-        var commandText = @"
-            SELECT * FROM News
-            ORDER BY PublishDate DESC
-            OFFSET @Offset ROWS 
-            FETCH NEXT @PageSize ROWS ONLY
-        ";
-        var news = await _sessionIterator.QueryAsync(async context =>
+        try
         {
-            return await context.News
-                .FromSqlRaw(commandText, 
-                    new NpgsqlParameter("@Offset", (pageNumber - 1) * pageSize), 
-                    new NpgsqlParameter("@PageSize", pageSize))
-                .Include(n => n.Images)
-                .Include(n => n.Content)
-                .ToListAsync();
-        });
-        return new PagedNewsDto
+            var result = await _readCrud.GetPaginatedNews(paramsDto);
+            return new NewsPreviewResultsDto
+            {
+                Success = true,
+                Previews = result
+            };
+        }
+        catch (Exception ex)
         {
-            News = news,
-            TotalCount = totalNewsCount
-        };
+            return new NewsPreviewResultsDto
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
+        }
     }
 
-    public async Task<NewsDto> GetNewsById(Guid id)
+    public async Task<NewsDetailsResultDto> GetNews(Guid id)
     {
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @Id
-        ";
-        var news = await _sessionIterator.QueryAsync(async context =>
+        try
         {
-            return await context.News
-                .FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
-                .Include(n => n.Images)
-                .Include(n => n.Content)
-                .FirstOrDefaultAsync();
-        });
-        return new NewsDto
+            var result = await _readCrud.GetNewsDetailsById(id);
+            return new NewsDetailsResultDto
+            {
+                Success = true,
+                Details = result
+            };
+        }
+        catch (Exception ex)
         {
-            News = news
-        };
+            return new NewsDetailsResultDto
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
+        }
     }
 }

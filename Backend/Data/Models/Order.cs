@@ -1,10 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 
 
 
 [Table("orders")]
+[Index(nameof(Id))]
+[Index(nameof(UserId))]
 public class Order
 {
     [Key]
@@ -50,6 +53,7 @@ public class Order
 
 
 [Table("order_items")]
+[Index(nameof(Id))]
 public class OrderItem
 {
     [Key]
@@ -70,6 +74,7 @@ public class OrderItem
 
 
 [Table("discounts")]
+[Index(nameof(Code))]
 public class Discount
 {
     [Key]
@@ -92,6 +97,8 @@ public class Discount
 
 
 [Table("order_items_relationship")]
+[Index(nameof(OrderId))]
+[Index(nameof(OrderItemId))]
 public class OrderItemRelationship
 {
     [Key]
@@ -99,11 +106,11 @@ public class OrderItemRelationship
     public Guid Id { get; set; }
 
     [ForeignKey("OrderId")]
-    [Column("order_id", TypeName = "uuid")]
+    [Column("fk_order_id", TypeName = "uuid")]
     public Guid OrderId { get; set; }
 
     [ForeignKey("OrderItemId")]
-    [Column("order_item_id", TypeName = "uuid")]
+    [Column("fk_order_item_id", TypeName = "uuid")]
     public Guid OrderItemId { get; set; }
 
     [InverseProperty("OrderItems")]
@@ -118,6 +125,8 @@ public class OrderItemRelationship
 
 
 [Table("order_discounts_relationship")]
+[Index(nameof(OrderId))]
+[Index(nameof(DiscountId))]
 public class OrderDiscountRelationship
 {
     [Key]
@@ -138,3 +147,17 @@ public class OrderDiscountRelationship
     [InverseProperty("OrderDiscountRelationships")]
     public required Discount Discount { get; set; }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

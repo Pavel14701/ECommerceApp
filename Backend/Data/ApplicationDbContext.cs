@@ -16,7 +16,6 @@ public class ApplicationDbContext : DbContext
     public DbSet<Category> Categories { get; set; }
     public DbSet<Subcategory> Subcategories { get; set; }
     public DbSet<CategoriesRelationship> CategoriesRelationships { get; set; }
-    public DbSet<SubcategoriesRelationship> SubcategoriesRelationships { get; set; }
     public DbSet<Content> Contents { get; set; }
     public DbSet<NewsRelationships> NewsRelationships { get; set; }
     public DbSet<Order> Orders { get; set; }
@@ -71,21 +70,11 @@ public class ApplicationDbContext : DbContext
             .WithOne(cr => cr.Category)
             .HasForeignKey(cr => cr.CategoryId);
 
-        modelBuilder.Entity<Category>()
-            .HasMany(c => c.SubcategoriesRelationships)
-            .WithOne(sr => sr.Category)
-            .HasForeignKey(sr => sr.CategoryId);
-
         // Subcategory Configuration
         modelBuilder.Entity<Subcategory>()
             .HasMany(s => s.CategoriesRelationships)
             .WithOne(cr => cr.Subcategory)
             .HasForeignKey(cr => cr.SubcategoryId);
-
-        modelBuilder.Entity<Subcategory>()
-            .HasMany(s => s.SubcategoriesRelationships)
-            .WithOne(sr => sr.Subcategory)
-            .HasForeignKey(sr => sr.SubcategoryId);
 
         // CategoriesRelationship Configuration
         modelBuilder.Entity<CategoriesRelationship>()
@@ -102,22 +91,6 @@ public class ApplicationDbContext : DbContext
             .HasOne(cr => cr.Product)
             .WithMany(p => p.CategoriesRelationships)
             .HasForeignKey(cr => cr.ProductId);
-
-        // SubcategoriesRelationship Configuration
-        modelBuilder.Entity<SubcategoriesRelationship>()
-            .HasOne(sr => sr.Category)
-            .WithMany(c => c.SubcategoriesRelationships)
-            .HasForeignKey(sr => sr.CategoryId);
-
-        modelBuilder.Entity<SubcategoriesRelationship>()
-            .HasOne(sr => sr.Subcategory)
-            .WithMany(s => s.SubcategoriesRelationships)
-            .HasForeignKey(sr => sr.SubcategoryId);
-
-        modelBuilder.Entity<SubcategoriesRelationship>()
-            .HasOne(sr => sr.Product)
-            .WithOne(p => p.SubcategoriesRelationship)
-            .HasForeignKey<SubcategoriesRelationship>(sr => sr.ProductId);
 
         // Content Configuration
         modelBuilder.Entity<Content>()

@@ -1,163 +1,205 @@
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
+public class DeleteNewsParamsDto : ReadNewsIdDto
+{}
+
+public class RemoveNewsImageParamsDto : ReadNewsIdDto
+{
+    public required int BlockNumber { get; set; }
+}
+
+public class RemoveTextBlockParamsDto : RemoveNewsImageParamsDto
+{}
+
+
+public interface IDeleteNewsService
+{
+    Task<Result> DeleteNews(DeleteNewsParamsDto paramsDto);
+    Task<Result> RemoveImageFromNews(RemoveNewsImageParamsDto paramsDto);
+    Task<Result> RemoveTextBlockFromNews(RemoveTextBlockParamsDto paramsDto);
+}
+
+
+
 
 public class DeleteNewsService : IDeleteNewsService
 {
     private readonly SessionIterator _sessionIterator;
-    private readonly string _uploadPath;
-
-    public DeleteNewsService(SessionIterator sessionIterator)
+    private readonly ReadCrud _readCrud;
+    private readonly DeleteCrud _delCrud;
+    private readonly ImageUploader _imageUploader;
+    public DeleteNewsService(
+        SessionIterator sessionIterator,
+        ReadCrud readCrud,
+        DeleteCrud delCrud,
+        ImageUploader imageUploader
+    )
     {
         _sessionIterator = sessionIterator;
-        _uploadPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "uploads"
-        );
-        if (!Directory.Exists(_uploadPath))
-        {
-            Directory.CreateDirectory(_uploadPath);
-        }
+        _readCrud = readCrud;
+        _delCrud = delCrud;
+        _imageUploader = imageUploader;
     }
 
-    public async Task<NewsDeletionResultDto> DeleteNews(Guid id)
+    public async Task<Result> DeleteNews(DeleteNewsParamsDto paramsDto)
     {
-        var commandText = @"
-            SELECT * FROM News
-            WHERE Id = @NewsId
-        ";
-        var news = await _sessionIterator.QueryAsync(async context =>
-        {
-            return await context.News
-                .FromSqlRaw(commandText, new SqlParameter("@NewsId", id))
-                .Include(n => n.Images)
-                .FirstOrDefaultAsync();
-        });
-
-        if (news != null)
-        {
-            foreach (var image in news.Images)
+        var result = await _readCrud.GetNewsIdByTitleAndDate(
+            new ReadNewsIdDto
             {
-                var filePath = Path.Combine(_uploadPath, image.ImageUrl);
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
+                Title = paramsDto.Title,
+                PublishDatetime = paramsDto.PublishDatetime
             }
-            await _sessionIterator.ExecuteAsync(async context =>
-            {
-                var deleteNewsCommand = @"
-                    DELETE FROM News 
-                    WHERE Id = @NewsId
-                ";
-                await context.Database.ExecuteSqlRawAsync(
-                    deleteNewsCommand, new SqlParameter("@NewsId", id)
-                );
-            });
-            return new NewsDeletionResultDto
-            {
-                Success = true,
-                Message = "News deleted successfully."
-            };
-        }
-        return new NewsDeletionResultDto
+        );
+        if (result is not null)
         {
-            Success = false,
-            Message = "News not found."
-        };
-    }
-
-    public async Task<ImageUpdateResultDto> RemoveImageFromNews(Guid newsId, Guid imageId)
-    {
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @NewsId
-        ";
-        var news = await _sessionIterator.QueryAsync(async context =>
-        {
-            return await context.News
-                .FromSqlRaw(commandText, new SqlParameter("@NewsId", newsId))
-                .Include(n => n.Images)
-                .FirstOrDefaultAsync();
-        });
-        if (news != null)
-        {
-            var image = news.Images.FirstOrDefault(i => i.Id == imageId);
-            if (image != null)
+            try
             {
-                var filePath = Path.Combine(_uploadPath, image.ImageUrl);
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
                 await _sessionIterator.ExecuteAsync(async context =>
                 {
-                    var deleteImageCommand = @"
-                        DELETE FROM Images 
-                        WHERE Id = @ImageId
-                    ";
-                    await context.Database.ExecuteSqlRawAsync(
-                        deleteImageCommand, new SqlParameter("@ImageId", imageId)
+                    await _delCrud.DeleteNews(
+                        new DeleteNewsParamsCrudDto
+                        {
+                            Context = context,
+                            Id = result.Id
+                        }
+                    );
+                    var imgIds = await _delCrud.DeleteAllImagesByNewsId(
+                        new DeleteImageParamsCrudDto
+                        {
+                            Context = context,
+                            Id = result.Id
+                        }
+                    );
+                    await _delCrud.DeleteAllTextBlocksByNewsId(
+                        new DeleteTextParamsCrudDto
+                        {
+                            Context = context,
+                            Id = result.Id
+                        }
+                    );
+                    await _imageUploader.DeleteImages(
+                        new ImageDeleteParamsDto
+                        {
+                            ImageIds = imgIds
+                        }
                     );
                 });
-                return new ImageUpdateResultDto
+                return new Result
                 {
-                    ImageId = imageId,
-                    ImageUrl = image.ImageUrl,
-                    Message = "Image removed successfully."
+                    Success = true
+                };
+            }   
+            catch (Exception ex)
+            {
+                return new Result
+                {
+                    Success = false,
+                    Message = $"Error: {ex}"
                 };
             }
-            return new ImageUpdateResultDto
-            {
-                Message = "Image not found."
-            };
         }
-        return new ImageUpdateResultDto
+        return new Result
         {
-            Message = "News not found."
+            Success = false,
+            Message = "News not founded"
         };
     }
 
-    public async Task<ImageUpdateResultDto> DeleteImage(Guid newsId, Guid imageId)
+    public async Task<Result> RemoveImageFromNews(RemoveNewsImageParamsDto paramsDto)
     {
-        var commandText = @"
-            SELECT * FROM News 
-            WHERE Id = @NewsId
-        ";
-        var news = await _sessionIterator.QueryAsync(async context =>
+        var result = await _readCrud.GetNewsIdByTitleAndDate(
+            new ReadNewsIdDto
+            {
+                Title = paramsDto.Title,
+                PublishDatetime = paramsDto.PublishDatetime
+            }
+        );
+        if ( result is not null )
         {
-            return await context.News
-                .FromSqlRaw(commandText, new SqlParameter("@NewsId", newsId))
-                .Include(n => n.Images)
-                .FirstOrDefaultAsync();
-        });
-        if (news == null)
-        {
-            return new ImageUpdateResultDto { Message = "News not found." };
-        }
-        var image = news.Images.FirstOrDefault(i => i.Id == imageId);
-        if (image == null)
-        {
-            return new ImageUpdateResultDto { Message = "Image not found." };
-        }
-        var filePath = Path.Combine(_uploadPath, image.ImageUrl);
-        if (File.Exists(filePath))
-        {
-            File.Delete(filePath);
-        }
-        await _sessionIterator.ExecuteAsync(async context =>
-        {
-            var deleteImageCommand = @"
-                DELETE FROM Images 
-                WHERE Id = @ImageId
-            ";
-            await context.Database.ExecuteSqlRawAsync(
-                deleteImageCommand, new SqlParameter("@ImageId", imageId)
+            try
+            {
+                await _sessionIterator.ExecuteAsync(async context =>
+                {
+                    var imgIds = await _delCrud.DeleteImagesByNewsIdAndBlockNumber(
+                        new DeleteNewsImageParamsDto
+                        {
+                            Context = context, 
+                            Id = result.Id,
+                            BlockNumber = paramsDto.BlockNumber
+                        }
+                    );
+                    await _imageUploader.DeleteImages(
+                        new ImageDeleteParamsDto
+                        {
+                            ImageIds = imgIds
+                        }
+                    );
+                }
             );
-        });
-        return new ImageUpdateResultDto
+            return new Result
+            {
+                Success = true
+            };
+            }
+            catch (Exception ex)
+            {
+                return new Result
+                {
+                    Success = false,
+                    Message = $"Error: {ex}" 
+                };
+            }
+        }
+        return new Result
         {
-            ImageId = imageId,
-            ImageUrl = image.ImageUrl,
-            Message = "Image deleted successfully."
+            Success = false,
+            Message = "News not founded"
+        };
+    } 
+
+
+    public async Task<Result> RemoveTextBlockFromNews(RemoveTextBlockParamsDto paramsDto)
+    {
+        var result = await _readCrud.GetNewsIdByTitleAndDate(
+            new ReadNewsIdDto
+            {
+                Title = paramsDto.Title,
+                PublishDatetime = paramsDto.PublishDatetime
+            }
+        );
+        if ( result is not null )
+        {
+            try
+            {
+                await _sessionIterator.ExecuteAsync(async context =>
+                {
+                    await _delCrud.DeleteTextBlockByNewsIdAndBlockNumber(
+                        new DeleteTextBlockImageParamsDto
+                        {
+                            Context = context,
+                            Id = result.Id,
+                            BlockNumber = paramsDto.BlockNumber
+                        }
+                    );
+                }
+                );
+                return new Result
+                {
+                    Success = true
+                };
+            }
+            catch (Exception ex)
+            {
+                return new Result
+                {
+                    Success = false,
+                    Message = $"Error: {ex}"
+                };
+            }
+        }
+        return new Result
+        {
+            Success = false,
+            Message = "News not founded"
         };
     }
+
 }

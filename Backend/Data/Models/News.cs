@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 public interface ITrackable
 {
@@ -7,8 +8,8 @@ public interface ITrackable
     DateTime UpdateDatetime { get; set; }
 }
 
-
 [Table("news_content")]
+[Index(nameof(BlockNumber))]
 public class Content
 {
     [Key]
@@ -22,14 +23,18 @@ public class Content
     [Column("block_number")]
     public required int BlockNumber { get; set; }
 
+    [ForeignKey(nameof(NewsId))]
+    [Column("fk_news_id", TypeName = "uuid")]
+    public Guid? NewsId { get; set; }
+    public News? News { get; set; }
+
     [InverseProperty("Content")]
     public List<NewsRelationships> NewsRelationships { get; set; } = new List<NewsRelationships>();
 }
 
-
-
-
 [Table("news")]
+[Index(nameof(Title))]
+[Index(nameof(PublishDatetime))]
 public class News : ITrackable
 {
     [Key]
@@ -53,9 +58,10 @@ public class News : ITrackable
     public List<NewsRelationships> NewsRelationships { get; set; } = new List<NewsRelationships>();
 }
 
-
 [Table("news_relationships")]
-public class  NewsRelationships
+[Index(nameof(NewsId))]
+[Index(nameof(ContentId))]
+public class NewsRelationships
 {
     [Key]
     [Column("id", TypeName = "uuid")]
@@ -76,6 +82,4 @@ public class  NewsRelationships
 
     [InverseProperty("NewsRelationships")]
     public required News News { get; set; }
-
 }
-

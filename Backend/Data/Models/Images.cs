@@ -1,8 +1,10 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 
 [Table("images")]
+[Index(nameof(Id))]
 public class Images
 {
     [Key]
@@ -28,6 +30,8 @@ public class Images
 
 
 [Table("news_images_relationship")]
+[Index(nameof(ImageId))]
+[Index(nameof(NewsId))]
 public class NewsImageRelationship
 {
     [Key]
@@ -53,7 +57,9 @@ public class NewsImageRelationship
 
 
 
-[Table("product_images_relationship")]
+[Table("product_images_relationshiыp")]
+[Index(nameof(ProductId))]
+[Index(nameof(ImageId))]
 public class ProductImageRelationship
 {
     [Key]

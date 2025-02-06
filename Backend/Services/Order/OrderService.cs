@@ -1,135 +1,125 @@
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
+public class OrderCreationParamsDto
+{
+
+}
+
+
+public class ResultOrderDto : Result
+{
+    public OrderDto? Order { get; protected set; }
+    
+    public ResultOrderDto(Result result, OrderDto? order)
+    {
+        Success = result.Success;
+        Message = result.Message;
+        Order = order;
+    }
+}
+
+
+
+public interface IOrderService
+{
+    Task<Result> CreateOrder(OrderCreationParamsDto paramsDto);
+}
+
+
 public class OrderService : IOrderService
 {
     private readonly SessionIterator _sessionIterator;
+    private readonly CreateCrud _createCrud;
+    private readonly ReadCrud _readCrud;
+    private readonly UpdateCrud _updateCrud;
+    private readonly DeleteCrud _delCrud;
 
-    public OrderService(SessionIterator sessionIterator)
-    {
-        _sessionIterator = sessionIterator;
-    }
-
-    public async Task<CreateOrderResultDto> CreateOrder(Order order)
-    {
-        var result = new CreateOrderResultDto
-        {
-            Success = false,
-            Message = "Failed to create order."
-        };
-        await _sessionIterator.ExecuteAsync(async context =>
-        {
-            order.OrderDate = DateTime.UtcNow;
-            foreach (var item in order.Items)
-            {
-                var commandText = @"
-                    SELECT * FROM Products
-                    WHERE Id = @ProductId
-                ";
-                var product = await context.Products.FromSqlRaw(commandText,
-                    new NpgsqlParameter("@ProductId", item.ProductId)
-                ).SingleOrDefaultAsync();
-                if (product == null || product.Stock < item.Quantity)
-                {
-                    result = new CreateOrderResultDto
-                    {
-                        Success = false,
-                        Message = "Product is not available or insufficient stock."
-                    };
-                    return;
-                }
-                var updateStockCommand = @"
-                    UPDATE Products 
-                    SET Stock = Stock - @Quantity 
-                    WHERE Id = @ProductId
-                ";
-                await context.Database.ExecuteSqlRawAsync(updateStockCommand,
-                    new NpgsqlParameter("@Quantity", item.Quantity),
-                    new NpgsqlParameter("@ProductId", item.ProductId));
-            }
-            order.CalculateTotalAmount();
-            context.Orders.Add(order);
-            await context.SaveChangesAsync();
-            result = new CreateOrderResultDto
-            {
-                Success = true,
-                Message = "Order created successfully.",
-                Order = order
-            };
-        });
-        return result;
-    }
-
-
-    public async Task<ApplyDiscountResultDto> ApplyDiscount(
-        Guid orderId, Discount discount
+    public OrderService
+    (
+        SessionIterator sessionIterator,
+        CreateCrud createCrud,
+        ReadCrud readCrud,
+        UpdateCrud updateCrud,
+        DeleteCrud delCrud
     )
     {
-        var commandText = @"
-            SELECT * FROM Orders 
-            WHERE Id = @OrderId 
-            INCLUDE Items 
-            INCLUDE Discounts
-        ";
-        var order = await _sessionIterator.QueryAsync(async context =>
-        {
-            return await context.Orders
-                .FromSqlRaw(commandText, new NpgsqlParameter("@OrderId", orderId))
-                .Include(o => o.Items)
-                .Include(o => o.Discounts)
-                .FirstOrDefaultAsync();
-        });
-        if (order == null)
-        {
-            return new ApplyDiscountResultDto
-            {
-                Success = false,
-                Message = "Order not found.",
-                OrderId = orderId
-            };
-        }
-        await _sessionIterator.ExecuteAsync(async context =>
-        {
-            order.Discounts.Add(discount);
-            order.CalculateTotalAmount();
-            await context.SaveChangesAsync();
-        });
-        return new ApplyDiscountResultDto
-        {
-            Success = true,
-            Message = "Discount applied successfully.",
-            OrderId = orderId,
-            Discount = discount
-        };
+        _sessionIterator = sessionIterator;
+        _createCrud = createCrud;
+        _readCrud = readCrud;
+        _updateCrud = updateCrud;
+        _delCrud = delCrud;
     }
 
-    public async Task<GetOrderByIdResultDto> GetOrderById(Guid id)
+    public async Task<Result> CreateOrder(OrderCreationParamsDto paramsDto)
     {
-        var commandText = @"
-            SELECT * FROM Orders 
-            WHERE Id = @OrderId 
-            INCLUDE Items 
-            INCLUDE Discounts";
-        var order = await _sessionIterator.QueryAsync(async context =>
-        {
-            return await context.Orders
-                .FromSqlRaw(commandText, new NpgsqlParameter("@OrderId", id))
-                .Include(o => o.Items)
-                .Include(o => o.Discounts)
-                .FirstOrDefaultAsync();
-        });
-        if (order == null)
-        {
-            return new GetOrderByIdResultDto
+        try{
+            return new Result
             {
-                Success = false,
-                Message = "Order not found."
+                Success = true
             };
         }
-        return new GetOrderByIdResultDto
+        catch (Exception ex)
         {
-            Success = true,
-            Message = "Order retrieved successfully.",
-            Order = order
-        };
+            return new Result
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
+        }
+    }
+
+
+
+    public async Task<Result> ApplyDiscount(Guid orderId, string promocode)
+    {
+        try
+        {
+            return new Result
+                {
+                    Success = true
+                };
+        }
+        catch (Exception ex)
+        {
+            return new Result
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
+        }
+    }
+
+
+    public async Task<ResultOrderDto> GetOrderById(Guid orderId)
+    {
+        try
+        {
+            return new ResultOrderDto(
+                new Result { Success = true}, null
+            );
+        }
+        catch (Exception ex)
+        {
+            return new ResultOrderDto(
+                new Result { Success = false, Message = $"Error: {ex}" }, null
+            );
+        }
+    }
+
+    public async Task<Result> UmendOrder(Guid orderId)
+    {
+        try
+        {
+            return new Result
+            {
+                Success = true
+            };
+        }
+        catch (Exception ex)
+        {
+            return new Result
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
+        }
     }
 }

@@ -1,7 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 [Table("products")]
+[Index(nameof(Id))]
+[Index(nameof(CategoryId))]
+[Index(nameof(SubcategoryId))]
 public class Product
 {
     [Key]
@@ -34,9 +38,6 @@ public class Product
 
     [InverseProperty("Product")]
     public List<CategoriesRelationship> CategoriesRelationships { get; set; } = new List<CategoriesRelationship>();
-
-    [InverseProperty("Product")]
-    public required SubcategoriesRelationship SubcategoriesRelationship { get; set; }
 
     [InverseProperty("Product")]
     public List<ProductImageRelationship> ProductImageRelationships { get; set; } = new List<ProductImageRelationship>();

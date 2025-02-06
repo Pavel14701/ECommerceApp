@@ -1,107 +1,63 @@
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
+public interface IProductDeleteService
+{
+    Task<Result> DeleteProduct(Guid id);
+    Task<Result> DeleteImage(Guid productId, Guid imageId);
+}
+
 
 public class ProductDeleteService : IProductDeleteService
 {
     private readonly SessionIterator _sessionIterator;
-    private readonly string _uploadPath;
+    private readonly DeleteCrud _delCrud;
+    private readonly ImageUploader _imageUploader;
 
-    public ProductDeleteService(SessionIterator sessionIterator)
+    public ProductDeleteService
+    (
+        SessionIterator sessionIterator,
+        DeleteCrud delCrud,
+        ImageUploader imageUploader
+    )
     {
         _sessionIterator = sessionIterator;
-        _uploadPath = Path.Combine(
-            Directory.GetCurrentDirectory(), "wwwroot", "uploads"
-        );
-        if (!Directory.Exists(_uploadPath))
+        _delCrud = delCrud;
+        _imageUploader = imageUploader;
+    }
+
+    public async Task<Result> DeleteProduct(Guid id)
+    {
+        try
         {
-            Directory.CreateDirectory(_uploadPath);
+            return new Result
+            {
+                Success = true
+            };
+        }
+        catch (Exception ex)
+        {
+            return new Result
+            {
+                Success = false,
+                Message = $"Error: {ex}"
+            };
         }
     }
 
-    public async Task<ProductDeletionResultDto> DeleteProduct(Guid id)
+    public async Task<Result> DeleteImage(Guid productId, Guid imageId)
     {
-        var product = await _sessionIterator.QueryAsync(async context =>
+        try
         {
-            var commandText = "SELECT * FROM Products WHERE Id = @Id";
-            return await context.Products.FromSqlRaw(commandText, new NpgsqlParameter("@Id", id))
-                .Include(p => p.Images)
-                .FirstOrDefaultAsync();
-        });
-
-        if (product != null)
-        {
-            foreach (var image in product.Images)
+            return new Result
             {
-                var filePath = Path.Combine(_uploadPath, image.ImageUrl);
-                if (File.Exists(filePath))
-                {
-                    File.Delete(filePath);
-                }
-            }
-
-            await _sessionIterator.ExecuteAsync(async context =>
-            {
-                var commandText = "DELETE FROM Products WHERE Id = @Id";
-                await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@Id", id));
-            });
-
-            return new ProductDeletionResultDto
-            {
-                ProductId = id,
-                Message = $"Product with ID: {id} has been deleted."
+                Success = true
             };
         }
-
-        return new ProductDeletionResultDto
+        catch (Exception ex)
         {
-            ProductId = id,
-            Message = $"Product with ID: {id} not found."
-        };
-    }
-
-    public async Task<ImageDeletionResultDto> DeleteImage(Guid productId, Guid imageId)
-    {
-        var product = await _sessionIterator.QueryAsync(async context =>
-        {
-            var commandText = "SELECT * FROM Products WHERE Id = @ProductId";
-            return await context.Products.FromSqlRaw(commandText, new NpgsqlParameter("@ProductId", productId))
-                .Include(p => p.Images)
-                .FirstOrDefaultAsync();
-        });
-        if (product == null)
-        {
-            return new ImageDeletionResultDto
+            return new Result
             {
                 Success = false,
-                Message = "Product not found."
+                Message = $"Error: {ex}"
             };
-        }
-        var image = product.Images.FirstOrDefault(i => i.Id == imageId);
-        if (image == null)
-        {
-            return new ImageDeletionResultDto
-            {
-                Success = false,
-                Message = "Image not found."
-            };
-        }
-        var filePath = Path.Combine(_uploadPath, image.ImageUrl);
-        if (File.Exists(filePath))
-        {
-            File.Delete(filePath);
-        }
-        await _sessionIterator.ExecuteAsync(async context =>
-        {
-            var commandText = "DELETE FROM Images WHERE Id = @ImageId";
-            await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@ImageId", imageId));
-        });
-        return new ImageDeletionResultDto
-        {
-            Success = true,
-            Message = $@"
-                Image with ID:{imageId} has been deleted 
-                from Product with ID: {productId}.
-            "
-        };
+        }        
     }
 }

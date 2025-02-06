@@ -1,7 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 [Table("users")]
+[Index(nameof(Id))]
+[Index(nameof(Username))]
+[Index(nameof(Email))]
 public class User
 {
     [Key]

@@ -16,11 +16,6 @@ public class ImageDeletionResultDto
     public string Message { get; set; } = string.Empty;
 }
 
-public class PagedProductsDto
-{
-    public int TotalCount { get; set; }
-    public IEnumerable<ProductDto> Products { get; set; } = new List<ProductDto>();
-}
 
 public class ProductDto
 {

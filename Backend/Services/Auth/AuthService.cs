@@ -4,22 +4,80 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Npgsql;
+
+
+
+public class AuthDtoParams
+{
+    public required string Username { get; set; }
+    public required string Password { get; set; }
+}
+
+public class RefreshDtoParams
+{
+    public required string RefreshToken { get; set; }
+}
+
+public class VerifPasswordDtoParams
+{
+    public required string Password { get; set; }
+    public required string StoredHash { get; set; }
+    public required string StoredSalt { get; set; }
+}
+
+public class UserDtoParams
+{
+    public required string Id { get; set; }
+    public required string Username { get; set; }
+    public required string Email { get; set; }
+}
+
+
+
+
+public class AuthResultDto
+{
+    public bool Success { get; set; }
+    public required string Message { get; set; } = string.Empty;
+    public User? User { get; set; }
+    public TokenResultDto? Tokens { get; set; }
+}
+
+public class TokenResultDto
+{
+    public required string AccessToken { get; set; }
+    public required string RefreshToken { get; set; }
+}
+
+
+
+
+
+public interface IAuthService
+{
+    Task<AuthResultDto> Authenticate(AuthDtoParams _user);
+    Task<AuthResultDto> RefreshToken(RefreshDtoParams _token);
+}
+
+
+
+
+
 
 public class AuthService : IAuthService
 {
-    private readonly SessionIterator _sessionIterator;
+    private readonly ReadCrud _readCrud;
     private readonly IConfiguration _configuration;
     private readonly byte[] _key;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
-        SessionIterator sessionIterator,
+        ReadCrud readCrud,
         IConfiguration configuration,
         ILogger<AuthService> logger
     )
     {
-        _sessionIterator = sessionIterator;
+        _readCrud = readCrud;
         _configuration = configuration;
         _key = Encoding.ASCII.GetBytes(
             _configuration["Jwt:Key"] ?? throw new InvalidOperationException(
@@ -33,27 +91,14 @@ public class AuthService : IAuthService
     {
         try
         {
-            var commandText = @"
-                SELECT * FROM public.""Users""
-                WHERE Username = @Username
-            ";
-            var parameters = new[]
-            {
-                new NpgsqlParameter("@Username", _user.Username)
-            };
-            var user = await _sessionIterator.QueryAsync(async context =>
-            {
-                return await context.Users
-                    .FromSqlRaw(commandText, parameters)
-                    .SingleOrDefaultAsync();
-            });
+            var user = await _readCrud.FindUserByUsername(_user.Username);
             if (user == null)
             {
                 _logger.LogWarning("Invalid username or password for user: {Username}", _user.Username);
                 return new AuthResultDto
                 {
                     Success = false,
-                    Message = "Invalid username or password."
+                    Message = "Invalid username"
                 };
             }
             var verifParams = new VerifPasswordDtoParams
@@ -68,7 +113,7 @@ public class AuthService : IAuthService
                 return new AuthResultDto
                 {
                     Success = false,
-                    Message = "Invalid username or password."
+                    Message = "Invalid password."
                 };
             }
             var userParams = new UserDtoParams
@@ -150,20 +195,7 @@ public class AuthService : IAuthService
                     Message = "Invalid refresh token."
                 };
             }
-            var commandText = @"
-                SELECT * FROM public.""Users"" 
-                WHERE Id = @UserId
-            ";
-            var parameters = new[]
-            {
-                new NpgsqlParameter("@UserId", Guid.Parse(userId))
-            };
-            var user = await _sessionIterator.QueryAsync(async context =>
-            {
-                return await context.Users
-                    .FromSqlRaw(commandText, parameters)
-                    .SingleOrDefaultAsync();
-            });
+            var user = await _readCrud.FindUserById(Guid.Parse(userId));
             if (user == null)
             {
                 _logger.LogWarning("User not found for refresh token: {UserId}", userId);
