@@ -97,7 +97,6 @@ public class SessionIterator
         }
     }
 
-    // Метод для чтения данных (без явного коммита транзакции)
     public async Task<T> ReadAsync<T>(Func<ApplicationDbContext, Task<T>> query)
     {
         var context = _sessionFactory.GetSession();
@@ -114,52 +113,6 @@ public class SessionIterator
         finally
         {
             _sessionFactory.ReturnSession(context);
-        }
-    }
-
-    // Методы для выполнения SQL-запросов
-    public async Task<int> ExecuteScalarAsync(ApplicationDbContext context, string sql, params NpgsqlParameter[] parameters)
-    {
-        try
-        {
-            using var command = context.Database.GetDbConnection().CreateCommand();
-            command.CommandText = sql;
-            if (command.Connection is null)
-            {
-                throw new InvalidOperationException("The database connection is null.");
-            }
-            if (command.Connection.State != System.Data.ConnectionState.Open)
-            {
-                await command.Connection.OpenAsync();
-            }
-
-            foreach (var parameter in parameters)
-            {
-                command.Parameters.Add(parameter);
-            }
-
-            var result = await command.ExecuteScalarAsync();
-            _logger.LogInformation("ExecuteScalarAsync completed successfully.");
-            return result != null ? Convert.ToInt32(result) : 0;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred during ExecuteScalarAsync.");
-            throw;
-        }
-    }
-
-    public async Task ExecuteSqlRawAsync(ApplicationDbContext context, string sql, params NpgsqlParameter[] parameters)
-    {
-        try
-        {
-            await context.Database.ExecuteSqlRawAsync(sql, parameters);
-            _logger.LogInformation("ExecuteSqlRawAsync completed successfully.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred during ExecuteSqlRawAsync.");
-            throw;
         }
     }
 }

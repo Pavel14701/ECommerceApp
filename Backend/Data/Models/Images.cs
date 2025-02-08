@@ -57,7 +57,8 @@ public class NewsImageRelationship
 
 
 
-[Table("product_images_relationshiыp")]
+
+[Table("product_image_relationship")]
 [Index(nameof(ProductId))]
 [Index(nameof(ImageId))]
 public class ProductImageRelationship

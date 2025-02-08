@@ -51,6 +51,8 @@ public class OrderService : IOrderService
     public async Task<Result> CreateOrder(OrderCreationParamsDto paramsDto)
     {
         try{
+            order.OrderDate = DateTime.UtcNow;
+            order.CalculateTotalAmount();
             return new Result
             {
                 Success = true

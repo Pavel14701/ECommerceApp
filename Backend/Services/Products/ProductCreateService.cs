@@ -36,6 +36,8 @@ public class ProductCreateService : IProductCreateService
     {
         try
         {
+            var productId = Guid.NewGuid();
+            var relationshipId = Guid.NewGuid();
             return new Result
             {
                 Success = true

@@ -9,8 +9,8 @@ public class PagedProductsDto : Result
 
 public class ResultProductDto : Result
 {
-    public ProductDto Product { get; protected set; }
-    public ResultProductDto(Result result, ProductDto product)
+    public ProductDto? Product { get; protected set; }
+    public ResultProductDto(Result result, ProductDto? product)
     {
         Success = result.Success;
         Message = result.Message;
@@ -82,13 +82,14 @@ public class ProductReadService : IProductReadService
         }
     }
 
-    public async Task<PagedProductsDto> GetProductsByFilters();
+    public async Task<PagedProductsDto> GetProductsByFilters()
     {
         try
         {
             return new PagedProductsDto
-            {
-                Success = true
+            { 
+                Success = true,
+                Products = null
             };
         }
         catch (Exception ex)
@@ -96,7 +97,8 @@ public class ProductReadService : IProductReadService
             return new PagedProductsDto
             {
                 Success = false,
-                Message = $"Error: {ex}"
+                Message = $"Error: {ex}",
+                Products = null
             };
         }
     } 
@@ -106,17 +108,16 @@ public class ProductReadService : IProductReadService
         try
         {
             return new ResultProductDto
-            {
-                Success = true
-            };
+            ( 
+                new Result{ Success = true }, null 
+            );
         }
         catch (Exception ex)
         {
             return new ResultProductDto
-            {
-                Success = false,
-                Message = $"Error: {ex}"
-            };
+            (
+                new Result{ Success = false, Message = $"Error: {ex.Message}" }, null 
+            );
         }
     }
 }

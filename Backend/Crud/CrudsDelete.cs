@@ -2,17 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 public class DeleteNewsParamsCrudDto : NewsReadResultDto
-{
-    public required ApplicationDbContext Context { get; set; }
-}
+{}
 
 public class DeleteImageParamsCrudDto : DeleteNewsParamsCrudDto
 {}
 
 public class DeleteTextParamsCrudDto : DeleteNewsParamsCrudDto
-{}
-
-public class DeleteTextNewsParamsDto : DeleteNewsParamsCrudDto
 {}
 
 public class DeleteNewsImageParamsDto : DeleteNewsParamsCrudDto
@@ -23,7 +18,16 @@ public class DeleteNewsImageParamsDto : DeleteNewsParamsCrudDto
 public class DeleteTextBlockImageParamsDto : DeleteNewsImageParamsDto
 {}
 
+public class DeleteOrderParamsCrudDto : DeleteNewsParamsCrudDto
+{}
 
+public class DeleteProductParamsCrudDto : DeleteOrderParamsCrudDto
+{} 
+
+public class DeleteImagesProductParamsCrudDto : DeleteOrderParamsCrudDto
+{
+    public required List<Guid> ImageIds { get; set; }
+}
 
 
 
@@ -35,12 +39,11 @@ public interface IDeleteCrud
     Task DeleteAllTextBlocksByNewsId(DeleteTextParamsCrudDto paramsDto);
     Task<List<Guid>> DeleteImagesByNewsIdAndBlockNumber(DeleteNewsImageParamsDto paramsDto);
     Task DeleteTextBlockByNewsIdAndBlockNumber(DeleteTextBlockImageParamsDto paramsDto);
-    Task DeleteOrder(ApplicationDbContext context, Guid orderId);
-    Task<List<Guid>> DeleteProduct(ApplicationDbContext context, Guid productId);
-    Task DeleteProductImages(ApplicationDbContext context, Guid productId, List<Guid> imageIds);
+    Task DeleteOrder(DeleteOrderParamsCrudDto paramsDto);
+    Task<List<Guid>> DeleteProduct(DeleteProductParamsCrudDto paramsDto);
+    Task DeleteProductImages(DeleteImagesProductParamsCrudDto paramsDto);
 
 }
-
 
 
 
@@ -48,15 +51,15 @@ public interface IDeleteCrud
 public class DeleteCrud : IDeleteCrud
 {
     private readonly SessionIterator _sessionIterator;
+
     public DeleteCrud(SessionIterator sessionIterator)
     {
         _sessionIterator = sessionIterator;
     }
 
-
-
     public async Task DeleteNews(DeleteNewsParamsCrudDto paramsDto)
     {
+
         try
         {
             var commandText = @"
@@ -85,8 +88,13 @@ public class DeleteCrud : IDeleteCrud
                 DELETE FROM news
                 WHERE id = @NewsId;
             ";
-            await _sessionIterator.ExecuteSqlRawAsync(paramsDto.Context, commandText,
-                new NpgsqlParameter("@NewsId", paramsDto.Id));
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync
+                (
+                    commandText, new NpgsqlParameter("@NewsId", paramsDto.Id)
+                );
+            });
         }
         catch (Exception ex)
         {
@@ -98,52 +106,39 @@ public class DeleteCrud : IDeleteCrud
     {
         try
         {
-            var commandText = @"
+            var sql = @"
                 WITH ImageIds AS (
                     SELECT image_id 
                     FROM news_images_relationship 
                     WHERE fk_news_id = @NewsId
+                ),
+                DeletedNewsContent AS (
+                    DELETE FROM news_content
+                    WHERE fk_image_id IN (SELECT image_id FROM ImageIds)
+                    RETURNING fk_image_id
+                ),
+                DeletedImages AS (
+                    DELETE FROM images
+                    WHERE id IN (SELECT image_id FROM ImageIds)
+                    RETURNING id
+                ),
+                DeletedNewsImagesRelationship AS (
+                    DELETE FROM news_images_relationship
+                    WHERE image_id IN (SELECT image_id FROM ImageIds)
+                    RETURNING image_id
                 )
-                DELETE FROM news_content 
-                USING ImageIds
-                WHERE news_content.fk_image_id = ImageIds.image_id;
-
-                DELETE FROM images 
-                USING ImageIds
-                WHERE images.id = ImageIds.image_id;
-
-                DELETE FROM news_images_relationship 
-                WHERE fk_news_id = @NewsId;
-
                 SELECT image_id FROM ImageIds;
             ";
-
-            var deletedImageIds = new List<Guid>();
-            using (var command = paramsDto.Context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@NewsId", paramsDto.Id));
-                
-                // Проверка на null перед использованием
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        deletedImageIds.Add(reader.GetGuid(0));
-                    }
-                }
-            }
-
+                new NpgsqlParameter("@NewsId", paramsDto.Id)
+            };
+            List<Guid> deletedImageIds = new List<Guid>();
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var result = await context.Set<ImageIdResult>().FromSqlRaw(sql, parameters.ToArray()).ToListAsync();
+                deletedImageIds = result.Select(r => r.Id).ToList();
+            });
             return deletedImageIds;
         }
         catch (Exception ex)
@@ -151,7 +146,6 @@ public class DeleteCrud : IDeleteCrud
             throw new Exception("An error occurred while deleting images related to the news.", ex);
         }
     }
-
 
 
     public async Task DeleteAllTextBlocksByNewsId(DeleteTextParamsCrudDto paramsDto)
@@ -171,8 +165,13 @@ public class DeleteCrud : IDeleteCrud
                 DELETE FROM news_relationships
                 WHERE fk_content IN (SELECT id FROM ContentIds);
             ";
-            await _sessionIterator.ExecuteSqlRawAsync(paramsDto.Context, commandText,
-                new NpgsqlParameter("@NewsId", paramsDto.Id));
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync
+                (
+                    commandText, new NpgsqlParameter("@NewsId", paramsDto.Id)
+                );
+            });
         }
         catch (Exception ex)
         {
@@ -185,32 +184,28 @@ public class DeleteCrud : IDeleteCrud
     {
         try
         {
-            var commandText = @"
+            var sql = @"
                 WITH ImageIds AS (
                     SELECT nc.fk_image_id
                     FROM news_content nc
                     JOIN news_images_relationship nir ON nc.fk_image_id = nir.image_id
                     WHERE nir.fk_news_id = @NewsId AND nc.block_number = @BlockNumber
                 ),
-
                 DeletedNewsContent AS (
                     DELETE FROM news_content
                     WHERE fk_image_id IN (SELECT fk_image_id FROM ImageIds)
                     RETURNING fk_image_id
                 ),
-
                 DeletedImages AS (
                     DELETE FROM images
                     WHERE id IN (SELECT fk_image_id FROM ImageIds)
                     RETURNING id
                 ),
-
                 DeletedNewsImagesRelationship AS (
                     DELETE FROM news_images_relationship
                     WHERE image_id IN (SELECT fk_image_id FROM ImageIds)
                     RETURNING image_id
                 ),
-
                 UpdatedNewsContent AS (
                     UPDATE news_content
                     SET block_number = block_number - 1
@@ -224,28 +219,17 @@ public class DeleteCrud : IDeleteCrud
                 )
                 SELECT id FROM DeletedImages;
             ";
-            var deletedImageIds = new List<Guid>();
-            using (var command = paramsDto.Context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@NewsId", paramsDto.Id));
-                command.Parameters.Add(new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        deletedImageIds.Add(reader.GetGuid(0));
-                    }
-                }
-            }
+                new NpgsqlParameter("@NewsId", paramsDto.Id),
+                new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber)
+            };
+            List<Guid> deletedImageIds = new List<Guid>();
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var result = await context.Set<ImageIdResult>().FromSqlRaw(sql, parameters).ToListAsync();
+                deletedImageIds = result.Select(r => r.Id).ToList();
+            });
             return deletedImageIds;
         }
         catch (Exception ex)
@@ -253,6 +237,12 @@ public class DeleteCrud : IDeleteCrud
             throw new Exception("An error occurred while deleting images related to the news and block number, and shifting block numbers.", ex);
         }
     }
+
+    private class ImageIdResult
+    {
+        public Guid Id { get; set; }
+    }
+
 
 
     public async Task DeleteTextBlockByNewsIdAndBlockNumber(DeleteTextBlockImageParamsDto paramsDto)
@@ -281,9 +271,15 @@ public class DeleteCrud : IDeleteCrud
                     WHERE fk_news = @NewsId
                 );
             ";
-            await _sessionIterator.ExecuteSqlRawAsync(paramsDto.Context, commandText,
+            var parameters = new List<NpgsqlParameter>
+            {
                 new NpgsqlParameter("@NewsId", paramsDto.Id),
-                new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber));
+                new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception ex)
         {
@@ -291,7 +287,7 @@ public class DeleteCrud : IDeleteCrud
         }
     }
 
-    public async Task DeleteOrder(ApplicationDbContext context, Guid orderId)
+    public async Task DeleteOrder(DeleteOrderParamsCrudDto paramsDto)
     {
         try
         {
@@ -312,11 +308,10 @@ public class DeleteCrud : IDeleteCrud
                 END;
                 $$;
             ";
-            var parameters = new[]
+            await _sessionIterator.ExecuteAsync(async context =>
             {
-                new NpgsqlParameter("@OrderId", orderId)
-            };
-            await _sessionIterator.ExecuteSqlRawAsync(context, commandText, parameters);
+                await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@OrderId", paramsDto.Id));
+            });
         }
         catch (Exception ex)
         {
@@ -324,41 +319,43 @@ public class DeleteCrud : IDeleteCrud
         }
     }
 
-    public async Task<List<Guid>> DeleteProduct(ApplicationDbContext context, Guid productId)
+    public async Task<List<Guid>> DeleteProduct(DeleteProductParamsCrudDto paramsDto)
     {
-        List<Guid> imageIds = new List<Guid>();
         try
         {
-            var commandText = @"
-                DO $$
-                DECLARE
-                    imageId UUID;
-                BEGIN
-                    FOR imageId IN
-                        SELECT fk_image
-                        FROM product_image_relationship
-                        WHERE fk_product = @ProductId
-                    LOOP
-                        imageIds := array_append(imageIds, imageId);
-                    END LOOP;
-
+            var sql = @"
+                WITH ImageIds AS (
+                    SELECT fk_image AS ImageId
+                    FROM product_image_relationship
+                    WHERE fk_product = @ProductId
+                ),
+                DeletedCategoryRelationship AS (
                     DELETE FROM category_relationship
-                    WHERE fk_product = @ProductId;
-
+                    WHERE fk_product = @ProductId
+                    RETURNING fk_product
+                ),
+                DeletedProductImageRelationship AS (
                     DELETE FROM product_image_relationship
-                    WHERE fk_product = @ProductId;
-
+                    WHERE fk_product = @ProductId
+                    RETURNING fk_image AS ImageId
+                ),
+                DeletedProducts AS (
                     DELETE FROM products
-                    WHERE id = @ProductId;
-                END;
-                $$;
+                    WHERE id = @ProductId
+                    RETURNING id
+                )
+                SELECT ImageId FROM ImageIds;
             ";
-            var parameters = new[]
+            var parameters = new List<NpgsqlParameter>
             {
-                new NpgsqlParameter("@ProductId", productId),
-                new NpgsqlParameter("imageIds", imageIds)
+                new NpgsqlParameter("@ProductId", paramsDto.Id)
             };
-            await _sessionIterator.ExecuteSqlRawAsync(context, commandText, parameters);        
+            List<Guid> imageIds = new List<Guid>();
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                var result = await context.Set<ImageIdResult>().FromSqlRaw(sql, parameters).ToListAsync();
+                imageIds = result.Select(r => r.Id).ToList();
+            });
             return imageIds;
         }
         catch (Exception ex)
@@ -367,7 +364,7 @@ public class DeleteCrud : IDeleteCrud
         }
     }
 
-    public async Task DeleteProductImages(ApplicationDbContext context, Guid productId, List<Guid> imageIds)
+    public async Task DeleteProductImages(DeleteImagesProductParamsCrudDto paramsDto)
     {
         try
         {
@@ -376,18 +373,20 @@ public class DeleteCrud : IDeleteCrud
                     BEGIN
                         DELETE FROM images
                         WHERE id = ANY(@ImageIds::uuid[]);
-
                         DELETE FROM product_image_relationship
                         WHERE fk_product = @ProductId AND fk_image = ANY(@ImageIds::uuid[]);
                     END;
                     $$;
                 ";
-                var parameters = new[]
+                var parameters = new List<NpgsqlParameter>
                 {
-                    new NpgsqlParameter("@ProductId", productId),
-                    new NpgsqlParameter("@ImageIds", imageIds.ToArray())
+                    new NpgsqlParameter("@ProductId", paramsDto.Id),
+                    new NpgsqlParameter("@ImageIds", paramsDto.ImageIds.ToArray())
                 };
-                await _sessionIterator.ExecuteSqlRawAsync(context, commandText, parameters);
+                await _sessionIterator.ExecuteAsync(async context =>
+                {
+                    await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+                });
         }
         catch (Exception ex)
         {

@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 [Table("products")]
 [Index(nameof(Id))]
-[Index(nameof(CategoryId))]
-[Index(nameof(SubcategoryId))]
+[Index(nameof(Name))]
+[Index(nameof(Price))]
 public class Product
 {
     [Key]
@@ -16,15 +16,6 @@ public class Product
     [Column("name", TypeName = "varchar(255)")]
     public required string Name { get; set; }
 
-    [Required]
-    [ForeignKey("CategoryId")]
-    [Column("fk_category", TypeName = "uuid")]
-    public Guid CategoryId { get; set; }
-
-    [Required]
-    [ForeignKey("SubcategoryId")]
-    [Column("fk_subcategory", TypeName = "uuid")]
-    public Guid SubcategoryId { get; set; }
 
     [Column("price", TypeName = "numeric(10,2)")]
     public decimal Price { get; set; }
@@ -36,15 +27,19 @@ public class Product
     [Column("description", TypeName = "varchar(2048)")]
     public required string Description { get; set; }
 
-    [InverseProperty("Product")]
-    public List<CategoriesRelationship> CategoriesRelationships { get; set; } = new List<CategoriesRelationship>();
+    [Column("discount", TypeName = "integer")]
+    [Range(1, 99, ErrorMessage = "Discount must be between 1 and 99.")]
+    public int? Discount { get; set; }
 
     [InverseProperty("Product")]
-    public List<ProductImageRelationship> ProductImageRelationships { get; set; } = new List<ProductImageRelationship>();
+    public required List<CategoriesRelationship> CategoriesRelationships { get; set; }
 
     [InverseProperty("Product")]
-    public required Category Category { get; set; }
+    public required List<ProductImageRelationship> ProductImageRelationships { get; set; }
 
     [InverseProperty("Product")]
-    public required Subcategory Subcategory { get; set; }
+    public required List<Category> Category { get; set; }
+
+    [InverseProperty("Product")]
+    public required List<Subcategory> Subcategory { get; set; }
 }

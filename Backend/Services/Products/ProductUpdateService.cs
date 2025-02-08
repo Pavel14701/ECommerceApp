@@ -1,20 +1,26 @@
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
+public class UpdateProductDto
+{
+    public Guid ProductId { get; set; }
+    public string? Name { get; set; }
+    public decimal? Price { get; set; }
+    public int? Discount { get; set; }
+    public Dictionary<Guid, Guid> CategorySubcategoryPairs { get; set; } = new Dictionary<Guid, Guid>(); // Словарь для категорий и подкатегорий
+}
+
 
 public class ProductUpdateService : IProductUpdateService
 {
     private readonly SessionIterator _sessionIterator;
-    private readonly string _uploadPath;
+    private readonly UpdateCrud _updateCrud;
 
-    public ProductUpdateService(SessionIterator sessionIterator)
+    public ProductUpdateService
+    (
+        SessionIterator sessionIterator,
+        UpdateCrud updateCrud
+    )
     {
         _sessionIterator = sessionIterator;
-        _uploadPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
-
-        if (!Directory.Exists(_uploadPath))
-        {
-            Directory.CreateDirectory(_uploadPath);
-        }
+        _updateCrud = updateCrud;
     }
 
     public async Task<ProductUpdateResultDto> UpdateProduct(Product product)
@@ -205,7 +211,7 @@ public class ProductUpdateService : IProductUpdateService
             await context.Database.ExecuteSqlRawAsync(insertCommandText,
                 new NpgsqlParameter("@Id", newImageId),
                 new NpgsqlParameter("@ImageUrl", fileName),
-                new NpgsqlParameter("@ProductId", productId));
+                new NpgsqlParameter("@Product1Id", productId));
         });
 
         return new ImageUpdateResultDto

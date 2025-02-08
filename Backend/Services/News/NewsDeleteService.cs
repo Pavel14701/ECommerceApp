@@ -58,21 +58,21 @@ public class DeleteNewsService : IDeleteNewsService
                         new DeleteNewsParamsCrudDto
                         {
                             Context = context,
-                            Id = result.Id
+                            Id = result
                         }
                     );
                     var imgIds = await _delCrud.DeleteAllImagesByNewsId(
                         new DeleteImageParamsCrudDto
                         {
                             Context = context,
-                            Id = result.Id
+                            Id = result
                         }
                     );
                     await _delCrud.DeleteAllTextBlocksByNewsId(
                         new DeleteTextParamsCrudDto
                         {
                             Context = context,
-                            Id = result.Id
+                            Id = result
                         }
                     );
                     await _imageUploader.DeleteImages(
@@ -122,7 +122,7 @@ public class DeleteNewsService : IDeleteNewsService
                         new DeleteNewsImageParamsDto
                         {
                             Context = context, 
-                            Id = result.Id,
+                            Id = result,
                             BlockNumber = paramsDto.BlockNumber
                         }
                     );
@@ -175,7 +175,7 @@ public class DeleteNewsService : IDeleteNewsService
                         new DeleteTextBlockImageParamsDto
                         {
                             Context = context,
-                            Id = result.Id,
+                            Id = result,
                             BlockNumber = paramsDto.BlockNumber
                         }
                     );

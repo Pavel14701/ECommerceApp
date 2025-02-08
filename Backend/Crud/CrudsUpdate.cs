@@ -25,17 +25,33 @@ public class UpdateNewsTextParamsDto : UpdateNewsParamsBase
 }
 
 
+public class UpdateProductParamsDto : UpdateProductDto
+{
+    public required ApplicationDbContext Context { get; set; }
+}
+
+
+
+
+
+
 public interface IUpdateCrud
 {
     Task UpdateNewsTitle(UpdateNewsTitleParamsDto paramsDto);
     Task UpdateImagesByBlockNumber(UpdateNewsImagesParamsDto paramsDto);
     Task UpdateTextBlock(UpdateNewsTextParamsDto paramsDto);
-    Task UpdateProductStock(ApplicationDbContext context, Guid productId, int quantity);
-    Task ApplyDiscountToOrder(ApplicationDbContext context, Guid orderId, Guid discountId);
+    Task UpdateProductStock(Guid productId, int quantity);
+    Task ApplyDiscountToOrder(Guid orderId, Guid discountId);
 }
 
 public class UpdateCrud : IUpdateCrud
 {
+    public readonly SessionIterator _sessionIterator
+    public UpdateCrud(SessionIterator sessionIterator)
+    {
+        _sessionIterator = sessionIterator
+    }
+
     public async Task UpdateNewsTitle(UpdateNewsTitleParamsDto paramsDto)
     {
         try
@@ -46,21 +62,16 @@ public class UpdateCrud : IUpdateCrud
                     update_datetime = NOW()
                 WHERE id = @NewsId;
             ";
-            using (var command = paramsDto.Context.Database.GetDbConnection().CreateCommand())
+            
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@NewTitle", paramsDto.NewTitle));
-                command.Parameters.Add(new NpgsqlParameter("@NewsId", paramsDto.NewsId));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                await command.ExecuteNonQueryAsync();
-            }
+                new NpgsqlParameter("@NewTitle", paramsDto.NewTitle),
+                new NpgsqlParameter("@NewsId", paramsDto.NewsId)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception)
         {
@@ -95,21 +106,15 @@ public class UpdateCrud : IUpdateCrud
                 SET update_datetime = NOW()
                 WHERE id = @NewsId;
             ";
-            using (var command = paramsDto.Context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@NewsId", paramsDto.NewsId));
-                command.Parameters.Add(new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                await command.ExecuteNonQueryAsync();
-            }
+                new NpgsqlParameter("@NewsId", paramsDto.NewsId),
+                new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception)
         {
@@ -133,22 +138,16 @@ public class UpdateCrud : IUpdateCrud
                 FROM updated_content
                 WHERE news.id = updated_content.fk_news_id;
             ";
-            using (var command = paramsDto.Context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@NewText", paramsDto.NewText));
-                command.Parameters.Add(new NpgsqlParameter("@NewsId", paramsDto.NewsId));
-                command.Parameters.Add(new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                await command.ExecuteNonQueryAsync();
-            }
+                new NpgsqlParameter("@NewText", paramsDto.NewText),
+                new NpgsqlParameter("@NewsId", paramsDto.NewsId),
+                new NpgsqlParameter("@BlockNumber", paramsDto.BlockNumber)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception)
         {
@@ -159,7 +158,7 @@ public class UpdateCrud : IUpdateCrud
 
 
 
-    public async Task UpdateProductStock(ApplicationDbContext context, Guid productId, int quantity)
+    public async Task UpdateProductStock(Guid productId, int quantity)
     {
         try
         {
@@ -168,21 +167,15 @@ public class UpdateCrud : IUpdateCrud
                 SET stock = stock - @Quantity 
                 WHERE id = @ProductId
             ";
-            using (var command = context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@Quantity", quantity));
-                command.Parameters.Add(new NpgsqlParameter("@ProductId", productId));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                await command.ExecuteNonQueryAsync();
-            }
+                new NpgsqlParameter("@Quantity", quantity),
+                new NpgsqlParameter("@ProductId", productId)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception)
         {
@@ -191,7 +184,7 @@ public class UpdateCrud : IUpdateCrud
     }
 
 
-    public async Task ApplyDiscountToOrder(ApplicationDbContext context, Guid orderId, Guid discountId)
+    public async Task ApplyDiscountToOrder(Guid orderId, Guid discountId)
     {
         try
         {
@@ -206,31 +199,88 @@ public class UpdateCrud : IUpdateCrud
                     VALUES (@RelId, @OrderId, @DiscountId);
 
                     UPDATE orders
-                    SET total_amount = total_amount - (SELECT amount FROM discounts WHERE id = @DiscountId)
+                    SET total_amount = total_amount - (S`ELECT amount FROM discounts WHERE id = @DiscountId)
                     WHERE id = @OrderId;
                 END;
                 $$;
             ";
-            using (var command = context.Database.GetDbConnection().CreateCommand())
+            var parameters = new List<NpgsqlParameter>
             {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@RelId", Guid.NewGuid()));
-                command.Parameters.Add(new NpgsqlParameter("@OrderId", orderId));
-                command.Parameters.Add(new NpgsqlParameter("@DiscountId", discountId));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                await command.ExecuteNonQueryAsync();
-            }
+                new NpgsqlParameter("@RelId", Guid.NewGuid()),
+                new NpgsqlParameter("@OrderId", orderId),
+                new NpgsqlParameter("@DiscountId", discountId)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
         }
         catch (Exception)
         {
             throw;
+        }
+    }
+
+    public async Task UpdateProduct(UpdateProductParamsDto paramsDto)
+    {
+        try
+        {
+            var commandText = @"
+                DO $$
+                BEGIN
+                    IF @Name IS NOT NULL THEN
+                        UPDATE products
+                        SET name = @Name
+                        WHERE id = @ProductId;
+                    END IF;
+
+                    IF @Price IS NOT NULL THEN
+                        UPDATE products
+                        SET price = @Price
+                        WHERE id = @ProductId;
+                    END IF;
+
+                    IF @Discount IS NOT NULL THEN
+                        UPDATE products
+                        SET discount = @Discount
+                        WHERE id = @ProductId;
+                    ELSE
+                        UPDATE products
+                        SET discount = NULL
+                        WHERE id = @ProductId;
+                    END IF;
+
+                    DELETE FROM category_relationship
+                    WHERE fk_product = @ProductId;
+                    
+                    IF @CategorySubcategoryPairs IS NOT NULL THEN
+                        FOR i IN 1..array_length(@CategorySubcategoryPairs, 1) LOOP
+                            INSERT INTO category_relationship (id, fk_category, fk_subcategory, fk_product)
+                            VALUES (gen_random_uuid(), @CategorySubcategoryPairs[i].category, @CategorySubcategoryPairs[i].subcategory, @ProductId);
+                        END LOOP;
+                    END IF;
+                END;
+                $$;
+            ";
+            var categorySubcategoryPairs = paramsDto.CategorySubcategoryPairs
+                .Select(pair => new { category = pair.Key, subcategory = pair.Value })
+                .ToArray();
+            var parameters = new[]
+            {
+                new NpgsqlParameter("@ProductId", paramsDto.ProductId),
+                new NpgsqlParameter("@Name", paramsDto.Name ?? (object)DBNull.Value),
+                new NpgsqlParameter("@Price", paramsDto.Price.HasValue ? (object)paramsDto.Price.Value : DBNull.Value),
+                new NpgsqlParameter("@Discount", paramsDto.Discount.HasValue ? (object)paramsDto.Discount.Value : DBNull.Value),
+                new NpgsqlParameter("@CategorySubcategoryPairs", categorySubcategoryPairs)
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+            });
+        }   
+        catch (Exception ex)
+        {
+            throw new Exception("An error occurred while updating the product.", ex);
         }
     }
 }

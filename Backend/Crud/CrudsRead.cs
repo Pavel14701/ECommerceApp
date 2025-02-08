@@ -24,6 +24,18 @@ public class NewsReadResultDto
 
 }
 
+public class NewsCheckDto
+{
+    public Guid Id { get; set; }
+    public string NewsTitle { get; set; } = string.Empty;
+    public DateTime PublishDatetime { get; set; }
+    public DateTime? UpdateDatetime { get; set; }
+    public Guid? ImageId { get; set; }
+    public string? ImageUrl { get; set; }
+    public string? Alt { get; set; }
+}
+
+
 public class NewsPreviewDto
 {
     public Guid Id { get; set; }
@@ -33,12 +45,39 @@ public class NewsPreviewDto
     public string? FirstImageUrl { get; set; }
 }
 
+
+
+public class NewsDataDto
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public DateTime PublishDatetime { get; set; }
+    public int BlockNumber { get; set; }
+    public string? Text { get; set; }
+    public string[]? Images { get; set; }
+}
+
+
 public class NewsDetailsDto
 {
     public Guid Id { get; set; }
     public string Title { get; set; } = string.Empty;
     public DateTime PublishDatetime { get; set; }
     public Dictionary<int, object>? ContentBlocks { get; set; }
+}
+
+public class OrderDataDto
+{
+    public Guid OrderId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public decimal TotalAmount { get; set; }
+    public Guid? OrderItemId { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public Guid? OrderDiscountId { get; set; }
+    public string? DiscountCode { get; set; }
+    public decimal? DiscountAmount { get; set; }
 }
 
 public class OrderDto
@@ -50,6 +89,7 @@ public class OrderDto
     public List<OrderItemDto> OrderItems { get; set; } = new List<OrderItemDto>();
     public List<OrderDiscountDto> OrderDiscounts { get; set; } = new List<OrderDiscountDto>();
 }
+
 
 public class OrderItemDto
 {
@@ -80,20 +120,23 @@ public class ProductInfoSearchDto
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal Price { get; set; }
-    public Guid CategoryId { get; set; }
-    public decimal? Discount { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int Stock { get; set; }
+    public int? Discount { get; set; }
+    public int TotalCount { get; set; }
     public List<string> ImageUrls { get; set; } = new List<string>();
 }
 
 
 
 
+
 public interface IReadCrud
 {
-    Task<Result> CheckNews(CheckNewsCrudDto news);
-    Task<NewsReadResultDto?> GetNewsIdByTitleAndDate(ReadNewsIdDto paramsDto);
+    Task<bool?> CheckNews(CheckNewsCrudDto news);
+    Task<Guid> GetNewsIdByTitleAndDate(ReadNewsIdDto paramsDto);
     Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto paramsDto);
-    Task<NewsDetailsDto> GetNewsDetailsById(Guid newsId);
+    Task<NewsDetailsDto?> GetNewsDetailsById(Guid newsId);
     Task<User?> FindUserByUsername(string username);
     Task<User?> FindUserById(Guid userId);
     Task<OrderDto?> GetOrderById(Guid orderId);
@@ -110,228 +153,183 @@ public class ReadCrud : IReadCrud
         _sessionIterator = sessionIterator;
     }
 
-    public async Task<Result> CheckNews(CheckNewsCrudDto news)
+public async Task<bool?> CheckNews(CheckNewsCrudDto news)
+{
+    try
     {
-        var commandText = @"
+        var sql = @"
             SELECT n.id, n.news_title, n.publish_datetime, n.update_datetime, ni.id AS ImageId, ni.image_url, ni.alt 
             FROM news n
             LEFT JOIN news_images_relationship nir ON n.id = nir.fk_news_id
             LEFT JOIN images ni ON nir.image_id = ni.id
-            WHERE n.id = @NewsId
+            WHERE n.id = @NewsId;
         ";
-        var result = await _sessionIterator.ReadAsync(async context =>
+        var parameters = new List<NpgsqlParameter>
         {
-            var connection = context.Database.GetDbConnection();
-            await connection.OpenAsync();
-            using var command = connection.CreateCommand();
-            command.CommandText = commandText;
-            command.Parameters.Add(new NpgsqlParameter("@NewsId", news.NewsId));
-            using var reader = await command.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                return new 
-                {
-                    Id = reader.GetGuid(0),
-                    NewsTitle = reader.GetString(1),
-                    PublishDatetime = reader.GetDateTime(2),
-                    UpdateDatetime = reader.GetDateTime(3),
-                    ImageId = reader.IsDBNull(4) ? null : (Guid?)reader.GetGuid(4),
-                    ImageUrl = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    Alt = reader.IsDBNull(6) ? null : reader.GetString(6)
-                };
-            }
-            return null;
-        });
-        if (result != null)
-        {
-            return new Result
-            {
-                Success = true,
-            };
-        }
-        return new Result
-        {
-            Success = false,
+            new NpgsqlParameter("@NewsId", news.NewsId)
         };
+        return await _sessionIterator.ReadAsync<bool?>(async context =>
+        {
+            var result = await context.Set<NewsCheckDto>().FromSqlRaw(sql, parameters).FirstOrDefaultAsync();
+            return (result is not null) ? true : null;
+        });
     }
-
-
-    public async Task<NewsReadResultDto?> GetNewsIdByTitleAndDate(ReadNewsIdDto paramsDto)
+    catch (Exception ex)
     {
-        var commandText = @"
-            SELECT n.id, n.news_title, n.publish_datetime 
+        throw new Exception("An error occurred while checking the news.", ex);
+    }
+}
+
+
+
+public async Task<Guid> GetNewsIdByTitleAndDate(ReadNewsIdDto paramsDto)
+{
+    try
+    {
+        var sql = @"
+            SELECT n.id
             FROM news n
             WHERE n.news_title = @Title AND n.publish_datetime = @PublishDatetime;
         ";
-        var result = await _sessionIterator.ReadAsync(async context =>
+        var parameters = new List<NpgsqlParameter>
         {
-            var connection = context.Database.GetDbConnection();
-            await connection.OpenAsync();
-            using var command = connection.CreateCommand();
-            command.CommandText = commandText;
-            command.Parameters.Add(new NpgsqlParameter("@Title", paramsDto.Title));
-            command.Parameters.Add(new NpgsqlParameter("@PublishDatetime", paramsDto.PublishDatetime));
-            using var reader = await command.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
-            {
-                return new NewsReadResultDto
-                {
-                    Id = reader.GetGuid(0)
-                };
-            }
-            return null;
+            new NpgsqlParameter("@Title", paramsDto.Title),
+            new NpgsqlParameter("@PublishDatetime", paramsDto.PublishDatetime)
+        };
+        var result = await _sessionIterator.ReadAsync<Guid>(async context =>
+        {
+            var newsId = await context.Set<CheckNewsCrudDto>().FromSqlRaw(sql, parameters).FirstOrDefaultAsync();
+            return newsId?.NewsId ?? Guid.Empty;
         });
         return result;
     }
-
-    public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto paramsDto)
+    catch (Exception ex)
     {
-        var newsList = new List<NewsPreviewDto>();
-        await _sessionIterator.ReadAsync(async context =>
-        {
-            var offset = (paramsDto.Page - 1) * paramsDto.PageSize;
-            var commandText = @"
-                WITH FirstTextBlock AS (
-                    SELECT nc.fk_news_id, nc.text
-                    FROM news_content nc
-                    WHERE nc.block_number = 1
-                ),
-                FirstImage AS (
-                    SELECT nir.fk_news_id, i.image_url
-                    FROM news_images_relationship nir
-                    JOIN images i ON nir.image_id = i.id
-                    WHERE nir.image_id = (
-                        SELECT MIN(nir2.image_id)
-                        FROM news_images_relationship nir2
-                        WHERE nir2.fk_news_id = nir.fk_news_id
-                    )
-                ),
-                PaginatedNews AS (
-                    SELECT
-                        n.id,
-                        n.news_title,
-                        n.publish_datetime,
-                        ft.text AS first_block_text,
-                        fi.image_url AS first_image_url,
-                        ROW_NUMBER() OVER (ORDER BY n.publish_datetime DESC) AS row_num
-                    FROM news n
-                    LEFT JOIN FirstTextBlock ft ON n.id = ft.fk_news_id
-                    LEFT JOIN FirstImage fi ON n.id = fi.fk_news_id
+        throw new Exception("An error occurred while fetching the news ID.", ex);
+    }
+}
+
+
+public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto paramsDto)
+{
+    try
+    {
+        var offset = (paramsDto.Page - 1) * paramsDto.PageSize;
+        var sql = @"
+            WITH FirstTextBlock AS (
+                SELECT nc.fk_news_id, nc.text
+                FROM news_content nc
+                WHERE nc.block_number = 1
+            ),
+            FirstImage AS (
+                SELECT nir.fk_news_id, i.image_url
+                FROM news_images_relationship nir
+                JOIN images i ON nir.image_id = i.id
+                WHERE nir.image_id = (
+                    SELECT MIN(nir2.image_id)
+                    FROM news_images_relationship nir2
+                    WHERE nir2.fk_news_id = nir.fk_news_id
                 )
+            ),
+            PaginatedNews AS (
                 SELECT
-                    id,
-                    news_title,
-                    publish_datetime,
-                    first_block_text,
-                    first_image_url
-                FROM PaginatedNews
-                WHERE row_num BETWEEN @Offset AND @Offset + @PageSize - 1;
-            ";
-            using (var command = context.Database.GetDbConnection().CreateCommand())
-            {
-                command.CommandText = commandText;
-                command.Parameters.Add(new NpgsqlParameter("@Offset", offset));
-                command.Parameters.Add(new NpgsqlParameter("@PageSize", paramsDto.PageSize));
-                if (command.Connection == null)
-                {
-                    throw new InvalidOperationException("The database connection is null.");
-                }
-                if (command.Connection.State != System.Data.ConnectionState.Open)
-                {
-                    await command.Connection.OpenAsync();
-                }
-                using (var reader = await command.ExecuteReaderAsync())
-                {
-                    while (await reader.ReadAsync())
-                    {
-                        var news = new NewsPreviewDto
-                        {
-                            Id = reader.GetGuid(0),
-                            Title = reader.GetString(1),
-                            PublishDatetime = reader.GetDateTime(2),
-                            FirstBlockText = reader.IsDBNull(3) ? null : reader.GetString(3),
-                            FirstImageUrl = reader.IsDBNull(4) ? null : reader.GetString(4)
-                        };
-                        newsList.Add(news);
-                    }
-                }
-            }
+                    n.id,
+                    n.news_title,
+                    n.publish_datetime,
+                    ft.text AS first_block_text,
+                    fi.image_url AS first_image_url,
+                    ROW_NUMBER() OVER (ORDER BY n.publish_datetime DESC) AS row_num
+                FROM news n
+                LEFT JOIN FirstTextBlock ft ON n.id = ft.fk_news_id
+                LEFT JOIN FirstImage fi ON n.id = fi.fk_news_id
+            )
+            SELECT
+                id,
+                news_title,
+                publish_datetime,
+                first_block_text,
+                first_image_url
+            FROM PaginatedNews
+            WHERE row_num BETWEEN @Offset AND @Offset + @PageSize - 1;
+        ";
+        var parameters = new[]
+        {
+            new NpgsqlParameter("@Offset", offset),
+            new NpgsqlParameter("@PageSize", paramsDto.PageSize)
+        };
+        return await _sessionIterator.ReadAsync(async context =>
+        {
+            var newsList = await context.Set<NewsPreviewDto>().FromSqlRaw(sql, parameters).ToListAsync();
             return newsList;
         });
-        return newsList;
     }
+    catch (Exception)
+    {
+        throw;
+    }
+}
 
-    public async Task<NewsDetailsDto> GetNewsDetailsById(Guid newsId)
+    public async Task<NewsDetailsDto?> GetNewsDetailsById(Guid newsId)
     {
         try
         {
-            var newsDetails = new NewsDetailsDto();
-            newsDetails.ContentBlocks = new Dictionary<int, object>();
-            await _sessionIterator.ReadAsync<NewsDetailsDto>(async context =>
+            var sql = @"
+                SELECT 
+                    n.id,
+                    n.news_title,
+                    n.publish_datetime,
+                    nc.block_number, 
+                    nc.text, 
+                    COALESCE(json_agg(jsonb_build_object('image_url', i.image_url, 'alt', i.alt)) FILTER (WHERE i.image_url IS NOT NULL), '[]') AS images
+                FROM news n
+                JOIN news_content nc ON n.id = nc.fk_news_id
+                JOIN news_images_relationship nir ON nc.fk_image_id = nir.image_id
+                JOIN images i ON nir.image_id = i.id
+                WHERE n.id = @NewsId
+                GROUP BY n.id, n.news_title, n.publish_datetime, nc.block_number, nc.text
+                ORDER BY nc.block_number;
+            ";
+            var parameters = new List<NpgsqlParameter>
             {
-                var commandText = @"
-                    SELECT 
-                        n.id,
-                        n.news_title,
-                        n.publish_datetime,
-                        nc.block_number, 
-                        nc.text, 
-                        COALESCE(json_agg(jsonb_build_object('image_url', i.image_url, 'alt', i.alt)) FILTER (WHERE i.image_url IS NOT NULL), '[]') AS images
-                    FROM news n
-                    JOIN news_content nc ON n.id = nc.fk_news_id
-                    JOIN news_images_relationship nir ON nc.fk_image_id = nir.image_id
-                    JOIN images i ON nir.image_id = i.id
-                    WHERE n.id = @NewsId
-                    GROUP BY n.id, n.news_title, n.publish_datetime, nc.block_number, nc.text
-                    ORDER BY nc.block_number;
-                ";
-                using (var command = context.Database.GetDbConnection().CreateCommand())
+                new NpgsqlParameter("@NewsId", newsId)
+            };
+            return await _sessionIterator.ReadAsync(async context =>
+            {
+                var newsData = await context.Set<NewsDataDto>().FromSqlRaw(sql, parameters).ToListAsync();
+                if (newsData == null || newsData.Count == 0)
                 {
-                    command.CommandText = commandText;
-                    command.Parameters.Add(new NpgsqlParameter("@NewsId", newsId));
-                    if (command.Connection == null)
+                    return null;
+                }
+                var newsDetails = new NewsDetailsDto
+                {
+                    Id = newsData[0].Id,
+                    Title = newsData[0].Title,
+                    PublishDatetime = newsData[0].PublishDatetime,
+                    ContentBlocks = new Dictionary<int, object>()
+                };
+                foreach (var data in newsData)
+                {
+                    var blockNumber = data.BlockNumber;
+                    if (data.Text != null)
                     {
-                        throw new InvalidOperationException("The database connection is null.");
+                        newsDetails.ContentBlocks[blockNumber] = data.Text;
                     }
-                    if (command.Connection.State != System.Data.ConnectionState.Open)
+                    else if (data.Images != null && data.Images.Length > 0)
                     {
-                        await command.Connection.OpenAsync();
-                    }
-                    using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            if (newsDetails.Id == Guid.Empty)
-                            {
-                                newsDetails.Id = reader.GetGuid(0);
-                                newsDetails.Title = reader.GetString(1);
-                                newsDetails.PublishDatetime = reader.GetDateTime(2);
-                            }
-                            var blockNumber = reader.GetInt32(3);
-                            var textContent = reader.IsDBNull(4) ? null : reader.GetString(4);
-                            var imageData = reader.GetFieldValue<string[]>(5);
-                            if (textContent != null)
-                            {
-                                newsDetails.ContentBlocks[blockNumber] = textContent;
-                            }
-                            else if (imageData != null && imageData.Length > 0)
-                            {
-                                newsDetails.ContentBlocks[blockNumber] = imageData.Select(imageJson => JsonConvert.DeserializeObject<Dictionary<string, string>>(imageJson)).ToList();
-                            }
-                        }
+                        newsDetails.ContentBlocks[blockNumber] = data.Images
+                            .Select(imageJson => JsonConvert.DeserializeObject<Dictionary<string, string>>(imageJson))
+                            .ToList();
                     }
                 }
-
                 return newsDetails;
             });
-
-            return newsDetails;
         }
         catch (Exception ex)
         {
             throw new Exception("An error occurred while fetching the news details.", ex);
         }
     }
+
 
 
 
@@ -414,83 +412,67 @@ public class ReadCrud : IReadCrud
     {
         try
         {
+            var sql = @"
+                SELECT 
+                    o.id AS OrderId,
+                    o.user_id AS UserId,
+                    o.order_date AS OrderDate,
+                    o.total_amount AS TotalAmount,
+                    oi.id AS OrderItemId,
+                    oi.quantity AS Quantity,
+                    oi.unit_price AS UnitPrice,
+                    od.id AS OrderDiscountId,
+                    d.code AS DiscountCode,
+                    d.amount AS DiscountAmount
+                FROM orders o
+                LEFT JOIN order_items_relationship oir ON o.id = oir.fk_order_id
+                LEFT JOIN order_items oi ON oir.fk_order_item_id = oi.id
+                LEFT JOIN order_discounts_relationship odr ON o.id = odr.order_id
+                LEFT JOIN discounts d ON odr.discount_id = d.id
+                WHERE o.id = @OrderId;
+            ";
+            var parameters = new[]
+            {
+                new NpgsqlParameter("@OrderId", orderId)
+            };
+            var orderDictionary = new Dictionary<Guid, OrderDto>();
             return await _sessionIterator.ReadAsync(async context =>
             {
-                var commandText = @"
-                    SELECT 
-                        o.id AS OrderId,
-                        o.user_id AS UserId,
-                        o.order_date AS OrderDate,
-                        o.total_amount AS TotalAmount,
-                        oi.id AS OrderItemId,
-                        oi.quantity AS Quantity,
-                        oi.unit_price AS UnitPrice,
-                        od.id AS OrderDiscountId,
-                        d.code AS DiscountCode,
-                        d.amount AS DiscountAmount
-                    FROM orders o
-                    LEFT JOIN order_items_relationship oir ON o.id = oir.fk_order_id
-                    LEFT JOIN order_items oi ON oir.fk_order_item_id = oi.id
-                    LEFT JOIN order_discounts_relationship odr ON o.id = odr.order_id
-                    LEFT JOIN discounts d ON odr.discount_id = d.id
-                    WHERE o.id = @OrderId;
-                ";
-                var parameters = new[]
+                var orderData = await context.Set<OrderDataDto>().FromSqlRaw(sql, parameters).ToListAsync();
+                foreach (var data in orderData)
                 {
-                    new NpgsqlParameter("@OrderId", orderId)
-                };
-                var orderDictionary = new Dictionary<Guid, OrderDto>();
-                await using (var command = context.Database.GetDbConnection().CreateCommand())
-                {
-                    command.CommandText = commandText;
-                    command.Parameters.AddRange(parameters);
-                    if (command.Connection == null)
+                    if (!orderDictionary.TryGetValue(data.OrderId, out var order))
                     {
-                        throw new InvalidOperationException("The database connection is null.");
-                    }
-                    if (command.Connection.State != System.Data.ConnectionState.Open)
-                    {
-                        await command.Connection.OpenAsync();
-                    }
-                    await using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
+                        order = new OrderDto
                         {
-                            var orderId = reader.GetGuid(0);
-                            if (!orderDictionary.TryGetValue(orderId, out var order))
-                            {
-                                order = new OrderDto
-                                {
-                                    Id = orderId,
-                                    UserId = reader.GetGuid(1),
-                                    OrderDate = reader.GetDateTime(2),
-                                    TotalAmount = reader.GetDecimal(3),
-                                    OrderItems = new List<OrderItemDto>(),
-                                    OrderDiscounts = new List<OrderDiscountDto>()
-                                };
-                                orderDictionary.Add(orderId, order);
-                            }
-                            if (!await reader.IsDBNullAsync(4))
-                            {
-                                var orderItem = new OrderItemDto
-                                {
-                                    Id = reader.GetGuid(4),
-                                    Quantity = reader.GetInt32(5),
-                                    UnitPrice = reader.GetDecimal(6)
-                                };
-                                order.OrderItems.Add(orderItem);
-                            }
-                            if (!await reader.IsDBNullAsync(7))
-                            {
-                                var orderDiscount = new OrderDiscountDto
-                                {
-                                    Id = reader.GetGuid(7),
-                                    Code = reader.GetString(8),
-                                    Amount = reader.GetDecimal(9)
-                                };
-                                order.OrderDiscounts.Add(orderDiscount);
-                            }
-                        }
+                            Id = data.OrderId,
+                            UserId = data.UserId,
+                            OrderDate = data.OrderDate,
+                            TotalAmount = data.TotalAmount,
+                            OrderItems = new List<OrderItemDto>(),
+                            OrderDiscounts = new List<OrderDiscountDto>()
+                        };
+                        orderDictionary[data.OrderId] = order;
+                    }
+                    if (data.OrderItemId.HasValue)
+                    {
+                        var orderItem = new OrderItemDto
+                        {
+                            Id = data.OrderItemId.Value,
+                            Quantity = data.Quantity,
+                            UnitPrice = data.UnitPrice
+                        };
+                        order.OrderItems.Add(orderItem);
+                    }
+                    if (data.OrderDiscountId.HasValue)
+                    {
+                        var orderDiscount = new OrderDiscountDto
+                        {
+                            Id = data.OrderDiscountId.Value,
+                            Code = data.DiscountCode ?? string.Empty,
+                            Amount = data.DiscountAmount ?? 0m
+                        };
+                        order.OrderDiscounts.Add(orderDiscount);
                     }
                 }
                 return orderDictionary.Values.FirstOrDefault();
@@ -502,27 +484,22 @@ public class ReadCrud : IReadCrud
         }
     }
 
-    public async Task<IEnumerable<ProductPreviewDto>> SearchProducts(string? name, decimal? minPrice, decimal? maxPrice, bool? hasDiscount, Dictionary<Guid, List<Guid>>? categorySubcategoryDict, int offset, int limit)
+
+    public async Task<IEnumerable<ProductPreviewDto>> SearchProducts(
+        string? name, decimal? minPrice, decimal? maxPrice, bool? hasDiscount, Dictionary<Guid, List<Guid>>? categorySubcategoryDict, int offset, int limit)
     {
         try
         {
-            var categoryIds = new List<Guid>();
-            var subcategoryIds = new List<Guid>();
-            if (categorySubcategoryDict != null)
-            {
-                foreach (var category in categorySubcategoryDict)
-                {
-                    categoryIds.Add(category.Key);
-                    subcategoryIds.AddRange(category.Value);
-                }
-            }
-            var commandText = @"
+            var categoryIds = categorySubcategoryDict?.Keys.ToList() ?? new List<Guid>();
+            var subcategoryIds = categorySubcategoryDict?.Values.SelectMany(v => v).ToList() ?? new List<Guid>();
+
+            var sql = @"
                 WITH ProductData AS (
                     SELECT 
                         p.id AS ProductId,
                         p.name AS ProductName,
                         p.price AS Price,
-                        d.amount AS Discount,
+                        p.discount AS Discount,
                         ROW_NUMBER() OVER (ORDER BY p.name) AS RowNum
                     FROM 
                         products p
@@ -536,19 +513,19 @@ public class ReadCrud : IReadCrud
                         (@Name IS NULL OR p.name ILIKE '%' || @Name || '%') AND
                         (@MinPrice IS NULL OR p.price >= @MinPrice) AND
                         (@MaxPrice IS NULL OR p.price <= @MaxPrice) AND
-                        (@HasDiscount IS NULL OR (@HasDiscount = TRUE AND d.amount IS NOT NULL) OR (@HasDiscount = FALSE AND d.amount IS NULL)) AND
-                        (cr.fk_category = ANY(@CategoryIds::uuid[]) OR @CategoryIds IS NULL) AND
-                        (cr.fk_subcategory = ANY(@SubcategoryIds::uuid[]) OR @SubcategoryIds IS NULL)
+                        (@HasDiscount IS NULL OR (@HasDiscount = TRUE AND p.discount IS NOT NULL) OR (@HasDiscount = FALSE AND p.discount IS NULL)) AND
+                        (cr.fk_category = ANY(@CategoryIds) OR @CategoryIds IS NULL) AND
+                        (cr.fk_subcategory = ANY(@SubcategoryIds) OR @SubcategoryIds IS NULL)
                 ),
                 ImageData AS (
                     SELECT
-                        pir.fk_product AS ProductId,
+                        pir.fk_product_id AS ProductId,
                         pi.image_url AS ImageUrl,
-                        ROW_NUMBER() OVER (PARTITION BY pir.fk_product ORDER BY pi.image_url) AS ImageRowNum
+                        ROW_NUMBER() OVER (PARTITION BY pir.fk_product_id ORDER BY pi.image_url) AS ImageRowNum
                     FROM 
                         product_image_relationship pir
                     LEFT JOIN
-                        images pi ON pir.fk_image = pi.id
+                        images pi ON pir.image_id = pi.id
                 )
                 SELECT 
                     pd.ProductId,
@@ -567,7 +544,7 @@ public class ReadCrud : IReadCrud
                 ORDER BY 
                     pd.RowNum;
             ";
-            var parameters = new[]
+            var parameters = new List<NpgsqlParameter>
             {
                 new NpgsqlParameter("@Name", name ?? (object)DBNull.Value),
                 new NpgsqlParameter("@MinPrice", minPrice ?? (object)DBNull.Value),
@@ -580,38 +557,10 @@ public class ReadCrud : IReadCrud
             };
             return await _sessionIterator.ReadAsync(async context =>
             {
-                var productList = new List<ProductPreviewDto>();
-                await using (var command = context.Database.GetDbConnection().CreateCommand())
-                {
-                    command.CommandText = commandText;
-                    command.Parameters.AddRange(parameters);
-                    if (command.Connection == null)
-                    {
-                        throw new InvalidOperationException("The database connection is null.");
-                    }
-                    if (command.Connection.State != System.Data.ConnectionState.Open)
-                    {
-                        await command.Connection.OpenAsync();
-                    }
-
-                    await using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            var product = new ProductPreviewDto
-                            {
-                                Id = reader.GetGuid(0),
-                                Name = reader.GetString(1),
-                                Price = reader.GetDecimal(2),
-                                Discount = reader.IsDBNull(3) ? (decimal?)null : reader.GetDecimal(3),
-                                ImageUrls = reader.IsDBNull(4) ? new List<string>() : reader.GetFieldValue<List<string>>(4)
-                            };
-                            productList.Add(product);
-                        }
-                    }
-                }
-                return productList;
-            });
+                var products = await context.Set<ProductPreviewDto>().FromSqlRaw(sql, parameters).ToListAsync();
+                return products;
+            }
+        );
         }
         catch (Exception)
         {
@@ -619,62 +568,54 @@ public class ReadCrud : IReadCrud
         }
     }
 
-    public async Task<(int TotalCount, Dictionary<Guid, ProductInfoSearchDto> Products)> SearchProductsInfo(string? name, decimal? minPrice, decimal? maxPrice, bool? hasDiscount, Dictionary<Guid, List<Guid>>? categorySubcategoryDict, int offset, int limit)
+
+    public async Task<(int TotalCount, Dictionary<Guid, ProductInfoSearchDto> Products)> SearchProductsInfo(
+        string? name, decimal? minPrice, decimal? maxPrice, bool? hasDiscount, Dictionary<Guid, List<Guid>>? categorySubcategoryDict, int offset, int limit)
     {
         try
         {
-            var categoryIds = new List<Guid>();
-            var subcategoryIds = new List<Guid>();
-            if (categorySubcategoryDict != null)
-            {
-                foreach (var category in categorySubcategoryDict)
-                {
-                    categoryIds.Add(category.Key);
-                    subcategoryIds.AddRange(category.Value);
-                }
-            }
-            var commandText = @"
+            var categoryIds = categorySubcategoryDict?.Keys.ToList() ?? new List<Guid>();
+            var subcategoryIds = categorySubcategoryDict?.Values.SelectMany(v => v).ToList() ?? new List<Guid>();
+            var sql = @"
                 WITH ProductData AS (
                     SELECT 
                         p.id AS ProductId,
                         p.name AS ProductName,
                         p.price AS Price,
-                        p.fk_category AS CategoryId,
-                        d.amount AS Discount,
+                        p.description AS Description,
+                        p.discount AS Discount,
+                        p.stock AS Stock,
                         ROW_NUMBER() OVER (ORDER BY p.name) AS RowNum,
                         COUNT(*) OVER() AS TotalCount
                     FROM 
                         products p
                     LEFT JOIN 
                         category_relationship cr ON p.id = cr.fk_product
-                    LEFT JOIN 
-                        order_discounts_relationship odr ON p.id = odr.fk_product
-                    LEFT JOIN 
-                        discounts d ON odr.discount_id = d.id
                     WHERE 
                         (@Name IS NULL OR p.name ILIKE '%' || @Name || '%') AND
                         (@MinPrice IS NULL OR p.price >= @MinPrice) AND
                         (@MaxPrice IS NULL OR p.price <= @MaxPrice) AND
-                        (@HasDiscount IS NULL OR (@HasDiscount = TRUE AND d.amount IS NOT NULL) OR (@HasDiscount = FALSE AND d.amount IS NULL)) AND
+                        (@HasDiscount IS NULL OR (@HasDiscount = TRUE AND p.discount IS NOT NULL) OR (@HasDiscount = FALSE AND p.discount IS NULL)) AND
                         (cr.fk_category = ANY(@CategoryIds::uuid[]) OR @CategoryIds IS NULL) AND
                         (cr.fk_subcategory = ANY(@SubcategoryIds::uuid[]) OR @SubcategoryIds IS NULL)
                 ),
                 ImageData AS (
                     SELECT
-                        pir.fk_product AS ProductId,
+                        pir.fk_product_id AS ProductId,
                         pi.image_url AS ImageUrl,
-                        ROW_NUMBER() OVER (PARTITION BY pir.fk_product ORDER BY pi.image_url) AS ImageRowNum
+                        ROW_NUMBER() OVER (PARTITION BY pir.fk_product_id ORDER BY pi.image_url) AS ImageRowNum
                     FROM 
                         product_image_relationship pir
                     LEFT JOIN
-                        images pi ON pir.fk_image = pi.id
+                        images pi ON pir.image_id = pi.id
                 )
                 SELECT 
                     pd.ProductId,
                     pd.ProductName,
                     pd.Price,
-                    pd.CategoryId,
+                    pd.Description,
                     pd.Discount,
+                    pd.Stock,
                     pd.TotalCount,
                     array_agg(i.ImageUrl) FILTER (WHERE i.ImageRowNum <= 5) AS ImageUrls
                 FROM 
@@ -684,11 +625,11 @@ public class ReadCrud : IReadCrud
                 WHERE 
                     pd.RowNum BETWEEN @Offset AND @Offset + @Limit - 1
                 GROUP BY 
-                    pd.ProductId, pd.ProductName, pd.Price, pd.CategoryId, pd.Discount, pd.TotalCount
+                    pd.ProductId, pd.ProductName, pd.Price, pd.Description, pd.Discount, pd.Stock, pd.TotalCount
                 ORDER BY 
                     pd.RowNum;
             ";
-            var parameters = new[]
+            var parameters = new List<NpgsqlParameter>
             {
                 new NpgsqlParameter("@Name", name ?? (object)DBNull.Value),
                 new NpgsqlParameter("@MinPrice", minPrice ?? (object)DBNull.Value),
@@ -699,51 +640,24 @@ public class ReadCrud : IReadCrud
                 new NpgsqlParameter("@Offset", offset),
                 new NpgsqlParameter("@Limit", limit)
             };
+            var productList = new Dictionary<Guid, ProductInfoSearchDto>();
+            int totalCount = 0;
             return await _sessionIterator.ReadAsync(async context =>
-            {
-                var productList = new Dictionary<Guid, ProductInfoSearchDto>();
-                int totalCount = 0;
-
-                await using (var command = context.Database.GetDbConnection().CreateCommand())
                 {
-                    command.CommandText = commandText;
-                    command.Parameters.AddRange(parameters);
-                    if (command.Connection == null)
+                    var products = await context.Set<ProductInfoSearchDto>().FromSqlRaw(sql, parameters).ToListAsync();
+                    foreach (var product in products)
                     {
-                        throw new InvalidOperationException("The database connection is null.");
-                    }
-                    if (command.Connection.State != System.Data.ConnectionState.Open)
-                    {
-                        await command.Connection.OpenAsync();
-                    }
-
-                    await using (var reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
+                        if (totalCount == 0)
                         {
-                            if (totalCount == 0)
-                            {
-                                totalCount = reader.GetInt32(5);
-                            }
-
-                            var product = new ProductInfoSearchDto
-                            {
-                                Id = reader.GetGuid(0),
-                                Name = reader.GetString(1),
-                                Price = reader.GetDecimal(2),
-                                CategoryId = reader.GetGuid(3),
-                                Discount = reader.IsDBNull(4) ? (decimal?)null : reader.GetDecimal(4),
-                                ImageUrls = reader.IsDBNull(6) ? new List<string>() : reader.GetFieldValue<List<string>>(6)
-                            };
-                            productList.Add(product.Id, product);
+                            totalCount = product.TotalCount;
                         }
+                        productList.Add(product.Id, product);
                     }
-                }
-
                 return (totalCount, productList);
-            });
+                }
+            );
         }
-        catch (Exception)
+        catch (Exception )
         {
             throw;
         }

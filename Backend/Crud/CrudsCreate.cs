@@ -1,45 +1,15 @@
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
-
-public class CreateNewsCrudDto
+public abstract class AbsId
 {
-    public required ApplicationDbContext Context { get; set; }
     public required Guid Id { get; set; }
-    public required string Title { get; set; }
-    public required DateTime PublishDatetime { get; set; }
-    public required DateTime UpdateDatetime { get; set; }
 }
 
-public class CreateImageCrudDto
+public class CreateProductDto : AbsId
 {
-    public required ApplicationDbContext Context { get; set; } 
-    public required Guid Id { get; set; }
-    public required string ImageUrl { get; set; }
-    public required string AltText { get; set; }
-    public required Guid NewsId { get; set; }
-}
-
-public class CreateContentImageCrudDto
-{
-    public required ApplicationDbContext Context { get; set; }
-    public required Guid Id { get; set; }
-    public required Guid ImageId { get; set; }
-    public required int BlockNumber { get; set; }
-}
-
-public class CreateContentTextCrudDto
-{
-    public required ApplicationDbContext Context { get; set; }
-    public required Guid Id { get; set; }
-    public required string TextContent { get; set; }
-    public required int BlockNumber { get; set; }
-    public Guid? NewsId { get; set; }
-}
-
-public class CreateProductDto
-{
-    public required ApplicationDbContext Context { get; set; }
     public string Name { get; set; } = string.Empty;
+    public Guid RelationshipId { get; set; }
     public Guid CategoryId { get; set; }
     public Guid SubcategoryId { get; set; }
     public decimal Price { get; set; }
@@ -47,16 +17,65 @@ public class CreateProductDto
     public string Description { get; set; } = string.Empty;
 }
 
+public class CreateOrderParamsCrudDto : AbsId
+{
+    public required Guid UserId { get; set; }
+    public required DateTime OrderDate { get; set; }
+    public required decimal TotalAmount { get; set; }
+    public required List<Product> OrderItems { get; set; }
+}
+
+public abstract class AbsImage : AbsId
+{
+    public required string AltText { get; set; }
+    public required string ImageUrl { get; set; }
+}
+
+public class CreateNewsCrudDto : AbsImage
+{
+    public required Guid ImageId { get; set; }
+    public required Guid ContentIdImage { get; set; }
+    public required Guid ContentIdText { get; set; }
+    public required string NewsTitle { get; set; }
+
+    public required string TextContent { get; set; }
+}
+
+public class CreateImageCrudDto : AbsImage
+{
+    public required Guid RelationshipId { get; set; }
+
+    public required Guid NewsId { get; set; }
+}
+
+public abstract class AbsRelationship : AbsId
+{
+    public required Guid RelationshipId { get; set; }
+    public required int BlockNumber { get; set; }
+}
+
+public class CreateContentImageCrudDto : AbsRelationship
+{
+    public required Guid ImageId { get; set; }
+}
+
+public class CreateContentTextCrudDto : AbsRelationship
+{
+    public required string TextContent { get; set; }
+
+    public Guid? NewsId { get; set; }
+}
 
 
 
 public interface ICreateCrud
 {
-    Task AddNews(CreateNewsCrudDto news);
-    Task AddImage(CreateImageCrudDto image);
-    Task AddNewsContentImage(CreateContentImageCrudDto image);
-    Task AddNewsContentText(CreateContentTextCrudDto text);
-    Task CreateOrder(ApplicationDbContext context, Order order);
+    Task AddNews(CreateNewsCrudDto paramsDto);
+    Task AddImage(CreateImageCrudDto paramsDto);
+    Task AddNewsContentImage(CreateContentImageCrudDto paramsDto);
+    Task AddNewsContentText(CreateContentTextCrudDto paramsDto);
+    Task CreateOrder(CreateOrderParamsCrudDto paramsDto);
+    Task CreateProduct(CreateProductDto paramsDto);
 }
 
 
@@ -64,39 +83,71 @@ public interface ICreateCrud
 public class CreateCrud : ICreateCrud
 {
     private readonly SessionIterator _sessionIterator;
+
     public CreateCrud(SessionIterator sessionIterator)
     {
         _sessionIterator = sessionIterator;
     }
 
-    public async Task AddNews(CreateNewsCrudDto news)
+
+    public async Task AddNews(CreateNewsCrudDto paramsDto)
     {
-        try
+        await _sessionIterator.ExecuteAsync(async context =>
         {
-            var commandTextNews = @"
-                INSERT INTO news (
-                    id, news_title, publish_datetime, update_datetime
-                )
-                VALUES (
-                    @id, @news_title, @publish_datetime, @update_datetime
-                )
+            var sql = @"
+                DO $$
+                DECLARE
+                    news_id UUID := @newsId;
+                    image_id UUID := @imageId;
+                    content_id_text UUID := @contentIdText;
+                    content_id_image UUID := @contentIdImage;
+                BEGIN
+                    -- Create news
+                    INSERT INTO news (id, news_title, publish_datetime, update_datetime)
+                    VALUES (news_id, @news_title, NOW(), NOW());
+
+                    -- Add image as the first block
+                    INSERT INTO images (id, image_url, alt)
+                    VALUES (image_id, @image_url, @alt);
+                    INSERT INTO news_content (id, text, block_number, fk_news_id)
+                    VALUES (content_id_image, NULL, 1, news_id);
+                    INSERT INTO news_images_relationship (id, image_id, fk_news_id)
+                    VALUES (gen_random_uuid(), image_id, news_id);
+
+                    -- Add text as the second block
+                    INSERT INTO news_content (id, text, block_number, fk_news_id)
+                    VALUES (content_id_text, @text, 2, news_id);
+
+                    -- Create relationships between news and content
+                    INSERT INTO news_relationships (id, fk_content, fk_news)
+                    VALUES (gen_random_uuid(), content_id_image, news_id);
+                    INSERT INTO news_relationships (id, fk_content, fk_news)
+                    VALUES (gen_random_uuid(), content_id_text, news_id);
+
+                    -- Return the id of the added image
+                    RETURN image_id;
+                END;
+                $$;
             ";
-            await _sessionIterator.ExecuteSqlRawAsync(news.Context, commandTextNews,
-                new NpgsqlParameter("@id", news.Id),
-                new NpgsqlParameter("@news_title", news.Title),
-                new NpgsqlParameter("@publish_datetime", news.PublishDatetime),
-                new NpgsqlParameter("@update_datetime", news.UpdateDatetime)
-            );
-        }
-        catch (Exception ex)
-        {
-            throw new Exception("An error occurred while adding news.", ex);
-        }
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("newsId", paramsDto.Id),
+                new NpgsqlParameter("news_title", paramsDto.NewsTitle),
+                new NpgsqlParameter("imageId", paramsDto.ImageId),
+                new NpgsqlParameter("contentIdImage", paramsDto.ContentIdImage),
+                new NpgsqlParameter("contentIdText", paramsDto.ContentIdText),
+                new NpgsqlParameter("news_title", paramsDto.NewsTitle),
+                new NpgsqlParameter("image_url", paramsDto.ImageUrl),
+                new NpgsqlParameter("alt", paramsDto.AltText),
+                new NpgsqlParameter("text", paramsDto.TextContent)
+            };
+            await context.Database.ExecuteSqlRawAsync(sql, parameters);
+        });
     }
 
-    public async Task AddImage(CreateImageCrudDto image)
+    public async Task AddImage(CreateImageCrudDto paramsDto)
     {
-        try
+        await _sessionIterator.ExecuteAsync(async context =>
         {
             var commandTextImage = @"
                 INSERT INTO images (
@@ -105,7 +156,6 @@ public class CreateCrud : ICreateCrud
                 VALUES (
                     @id, @image_url, @alt
                 );
-                
                 INSERT INTO news_images_relationship (
                     id, image_id, fk_news_id
                 )
@@ -113,58 +163,49 @@ public class CreateCrud : ICreateCrud
                     @rel_id, @id, @fk_news_id
                 );
             ";
-            await _sessionIterator.ExecuteSqlRawAsync(image.Context, commandTextImage,
-                new NpgsqlParameter("@id", image.Id),
-                new NpgsqlParameter("@image_url", image.ImageUrl),
-                new NpgsqlParameter("@alt", image.AltText),
-                new NpgsqlParameter("@rel_id", Guid.NewGuid()),
-                new NpgsqlParameter("@fk_news_id", image.NewsId)
-            );
-        }
-        catch (Exception ex)
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("@id", paramsDto.Id),
+                new NpgsqlParameter("@image_url", paramsDto.ImageUrl),
+                new NpgsqlParameter("@alt", paramsDto.AltText),
+                new NpgsqlParameter("@rel_id", paramsDto.RelationshipId),
+                new NpgsqlParameter("@fk_news_id", paramsDto.NewsId)
+            };
+            await context.Database.ExecuteSqlRawAsync(commandTextImage, parameters);
+        });
+    }
+
+    public async Task AddNewsContentImage(CreateContentImageCrudDto paramsDto)
+    {
+        await _sessionIterator.ExecuteAsync(async context =>
         {
-            throw new Exception("An error occurred while adding image.", ex);
-        }
+            var commandText = @"
+                DO $$
+                BEGIN
+                    INSERT INTO news_content (id, text, block_number)
+                    VALUES (@id, NULL, @block_number);
+                    INSERT INTO news_relationships (id, fk_content, fk_image_id, block_number)
+                    VALUES (@rel_id, @content_id, @image_id, @block_number);
+                END;
+                $$;
+            ";
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("@id", paramsDto.Id),
+                new NpgsqlParameter("@block_number", paramsDto.BlockNumber),
+                new NpgsqlParameter("@rel_id", paramsDto.RelationshipId),
+                new NpgsqlParameter("@content_id", paramsDto.Id),
+                new NpgsqlParameter("@image_id", paramsDto.ImageId)
+            };
+            await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+        });
     }
 
-public async Task AddNewsContentImage(CreateContentImageCrudDto image)
-{
-    try
+
+
+    public async Task AddNewsContentText(CreateContentTextCrudDto paramsDto)
     {
-        var commandText = @"
-            DO $$
-            BEGIN
-                INSERT INTO news_content (id, text, block_number)
-                VALUES (@id, @text, @block_number);
-
-                INSERT INTO news_relationships (id, fk_content, fk_image_id, block_number)
-                VALUES (@rel_id, @content_id, @image_id, @block_number);
-            END;
-            $$;
-        ";
-        var parameters = new[]
-        {
-            new NpgsqlParameter("@id", image.Id),
-            new NpgsqlParameter("@text", DBNull.Value),
-            new NpgsqlParameter("@block_number", image.BlockNumber),
-            new NpgsqlParameter("@rel_id", Guid.NewGuid()),
-            new NpgsqlParameter("@content_id", image.Id),
-            new NpgsqlParameter("@image_id", image.ImageId)
-        };
-
-        await _sessionIterator.ExecuteSqlRawAsync(image.Context, commandText, parameters);
-    }
-    catch (Exception ex)
-    {
-        throw new Exception("An error occurred while adding news content image.", ex);
-    }
-}
-
-
-
-    public async Task AddNewsContentText(CreateContentTextCrudDto text)
-    {
-        try
+        await _sessionIterator.ExecuteAsync(async context =>
         {
             var commandText = @"
                 DO $$
@@ -174,39 +215,31 @@ public async Task AddNewsContentImage(CreateContentImageCrudDto image)
                         AND text IS NOT NULL) > 0 THEN
                         RAISE EXCEPTION 'Content with block number % already exists.', @block_number;
                     END IF;
-
                     INSERT INTO news_content (id, text, block_number)
                     VALUES (@id, @text, @block_number);
-
                     INSERT INTO news_relationships (id, fk_content, fk_news_id)
                     VALUES (@rel_id, @content_id, @news_id);
                 END;
                 $$;
             ";
-            var parameters = new[]
+            var parameters = new List<NpgsqlParameter>
             {
-                new NpgsqlParameter("@id", text.Id),
-                new NpgsqlParameter("@text", text.TextContent),
-                new NpgsqlParameter("@block_number", text.BlockNumber),
-                new NpgsqlParameter("@rel_id", Guid.NewGuid()),
-                new NpgsqlParameter("@content_id", text.Id),
-                new NpgsqlParameter("@news_id", text.NewsId)
+                new NpgsqlParameter("@id", paramsDto.Id),
+                new NpgsqlParameter("@text", paramsDto.TextContent),
+                new NpgsqlParameter("@block_number", paramsDto.BlockNumber),
+                new NpgsqlParameter("@rel_id", paramsDto.RelationshipId),
+                new NpgsqlParameter("@content_id", paramsDto.Id),
+                new NpgsqlParameter("@news_id", paramsDto.NewsId)
             };
-            await _sessionIterator.ExecuteSqlRawAsync(text.Context, commandText, parameters);
-        }
-        catch (Exception ex)
-        {
-            throw new Exception("An error occurred while adding news content text.", ex);
-        }
+            await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+        });
     }
 
 
-    public async Task CreateOrder(ApplicationDbContext context, Order order)
+    public async Task CreateOrder(CreateOrderParamsCrudDto paramsDto)
     {
-        try
+        await _sessionIterator.ExecuteAsync(async context =>
         {
-            order.OrderDate = DateTime.UtcNow;
-            order.CalculateTotalAmount();
             var commandText = @"
                 WITH order_insert AS (
                     INSERT INTO orders (id, user_id, order_date, total_amount)
@@ -245,27 +278,22 @@ public async Task AddNewsContentImage(CreateContentImageCrudDto image)
             ";
             var parameters = new[]
             {
-                new NpgsqlParameter("@OrderId", order.Id),
-                new NpgsqlParameter("@UserId", order.UserId),
-                new NpgsqlParameter("@OrderDate", order.OrderDate),
-                new NpgsqlParameter("@TotalAmount", order.TotalAmount),
-                new NpgsqlParameter("@OrderItems", Newtonsoft.Json.JsonConvert.SerializeObject(order.OrderItems))
+                new NpgsqlParameter("@OrderId", paramsDto.Id),
+                new NpgsqlParameter("@UserId", paramsDto.UserId),
+                new NpgsqlParameter("@OrderDate", paramsDto.OrderDate),
+                new NpgsqlParameter("@TotalAmount",paramsDto.TotalAmount),
+                new NpgsqlParameter("@OrderItems", Newtonsoft.Json.JsonConvert.SerializeObject(paramsDto.OrderItems))
             };
-            await _sessionIterator.ExecuteSqlRawAsync(context, commandText, parameters);
-        }
-        catch (Exception ex)
-        {
-            throw new Exception("An error occurred while creation new order", ex);
-        }   
+        await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+        });
     }
 
 
-    public async Task CreateProductAsync(CreateProductDto productDto)
+
+    public async Task CreateProduct(CreateProductDto paramsDto)
     {
-        try
+        await _sessionIterator.ExecuteAsync(async context =>
         {
-            var productId = Guid.NewGuid();
-            var relationshipId = Guid.NewGuid();
             var commandText = @"
                 DO $$
                 BEGIN
@@ -275,7 +303,6 @@ public async Task AddNewsContentImage(CreateContentImageCrudDto image)
                     VALUES (
                         @ProductId, @Name, @CategoryId, @SubcategoryId, @Price, @Stock, @Description
                     );
-
                     INSERT INTO category_relationship (
                         id, fk_category, fk_subcategory, fk_product
                     )
@@ -285,23 +312,18 @@ public async Task AddNewsContentImage(CreateContentImageCrudDto image)
                 END;
                 $$;
             ";
-            var parameters = new[]
+            var parameters = new List<NpgsqlParameter>
             {
-                new NpgsqlParameter("@ProductId", productId),
-                new NpgsqlParameter("@Name", productDto.Name),
-                new NpgsqlParameter("@CategoryId", productDto.CategoryId),
-                new NpgsqlParameter("@SubcategoryId", productDto.SubcategoryId),
-                new NpgsqlParameter("@Price", productDto.Price),
-                new NpgsqlParameter("@Stock", productDto.Stock),
-                new NpgsqlParameter("@Description", productDto.Description),
-                new NpgsqlParameter("@RelationshipId", relationshipId)
+                new NpgsqlParameter("@ProductId", paramsDto.Id),
+                new NpgsqlParameter("@Name", paramsDto.Name),
+                new NpgsqlParameter("@CategoryId", paramsDto.CategoryId),
+                new NpgsqlParameter("@SubcategoryId", paramsDto.SubcategoryId),
+                new NpgsqlParameter("@Price", paramsDto.Price),
+                new NpgsqlParameter("@Stock", paramsDto.Stock),
+                new NpgsqlParameter("@Description", paramsDto.Description),
+                new NpgsqlParameter("@RelationshipId", paramsDto.RelationshipId)
             };
-            await _sessionIterator.ExecuteSqlRawAsync(productDto.Context, commandText, parameters);
-        }
-        catch (Exception ex)
-        {
-            throw new Exception("An error occurred while creating the product.", ex);
-        }
+            await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+        });
     }
-
 }
