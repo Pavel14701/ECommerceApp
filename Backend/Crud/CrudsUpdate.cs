@@ -46,10 +46,10 @@ public interface IUpdateCrud
 
 public class UpdateCrud : IUpdateCrud
 {
-    public readonly SessionIterator _sessionIterator
+    public readonly SessionIterator _sessionIterator;
     public UpdateCrud(SessionIterator sessionIterator)
     {
-        _sessionIterator = sessionIterator
+        _sessionIterator = sessionIterator;
     }
 
     public async Task UpdateNewsTitle(UpdateNewsTitleParamsDto paramsDto)
