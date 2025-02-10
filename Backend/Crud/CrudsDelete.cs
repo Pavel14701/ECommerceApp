@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using NpgsqlTypes;
 
 public class DeleteNewsParamsCrudDto : NewsReadResultDto
 {}
@@ -63,28 +64,25 @@ public class DeleteCrud : IDeleteCrud
         try
         {
             var commandText = @"
-                WITH ContentIds AS (
-                    SELECT fk_content
-                    FROM news_relationships
+            WITH
+                ContentIds AS (
+                    DELETE FROM news_relationships
                     WHERE fk_news = @NewsId
+                    RETURNING fk_content
                 ),
                 ImageIds AS (
-                    SELECT image_id
-                    FROM news_images_relationship
+                    DELETE FROM news_images_relationship
                     WHERE fk_news_id = @NewsId
+                    RETURNING image_id
+                ),
+                DeletedContent AS (
+                    DELETE FROM news_content
+                    WHERE id IN (SELECT fk_content FROM ContentIds)
+                ),
+                DeletedImages AS (
+                    DELETE FROM images
+                    WHERE id IN (SELECT image_id FROM ImageIds)
                 )
-                DELETE FROM news_relationships
-                WHERE fk_news = @NewsId;
-
-                DELETE FROM news_images_relationship
-                WHERE fk_news_id = @NewsId;
-
-                DELETE FROM news_content
-                WHERE id IN (SELECT fk_content FROM ContentIds);
-
-                DELETE FROM images
-                WHERE id IN (SELECT image_id FROM ImageIds);
-
                 DELETE FROM news
                 WHERE id = @NewsId;
             ";
@@ -159,12 +157,14 @@ public class DeleteCrud : IDeleteCrud
                     JOIN news_relationships nr ON nc.id = nr.fk_content
                     WHERE nr.fk_news = @NewsId
                 )
+                , DeletedNewsRelationships AS (
+                    DELETE FROM news_relationships
+                    WHERE fk_content IN (SELECT id FROM ContentIds)
+                    RETURNING fk_content
+                )
                 DELETE FROM news_content
                 WHERE id IN (SELECT id FROM ContentIds);
-
-                DELETE FROM news_relationships
-                WHERE fk_content IN (SELECT id FROM ContentIds);
-            ";
+                ";
             await _sessionIterator.ExecuteAsync(async context =>
             {
                 await context.Database.ExecuteSqlRawAsync
@@ -191,6 +191,11 @@ public class DeleteCrud : IDeleteCrud
                     JOIN news_images_relationship nir ON nc.fk_image_id = nir.image_id
                     WHERE nir.fk_news_id = @NewsId AND nc.block_number = @BlockNumber
                 ),
+                DeletedNewsImagesRelationship AS (
+                    DELETE FROM news_images_relationship
+                    WHERE image_id IN (SELECT fk_image_id FROM ImageIds)
+                    RETURNING image_id
+                ),
                 DeletedNewsContent AS (
                     DELETE FROM news_content
                     WHERE fk_image_id IN (SELECT fk_image_id FROM ImageIds)
@@ -200,11 +205,6 @@ public class DeleteCrud : IDeleteCrud
                     DELETE FROM images
                     WHERE id IN (SELECT fk_image_id FROM ImageIds)
                     RETURNING id
-                ),
-                DeletedNewsImagesRelationship AS (
-                    DELETE FROM news_images_relationship
-                    WHERE image_id IN (SELECT fk_image_id FROM ImageIds)
-                    RETURNING image_id
                 ),
                 UpdatedNewsContent AS (
                     UPDATE news_content
@@ -255,20 +255,24 @@ public class DeleteCrud : IDeleteCrud
                     FROM news_content nc
                     JOIN news_relationships nr ON nc.id = nr.fk_content
                     WHERE nr.fk_news = @NewsId AND nc.block_number = @BlockNumber
+                ),
+                DeletedNewsRelationships AS (
+                    DELETE FROM news_relationships
+                    WHERE fk_content IN (SELECT id FROM ContentIds)
+                    RETURNING fk_content
+                ),
+                DeletedNewsContent AS (
+                    DELETE FROM news_content
+                    WHERE id IN (SELECT id FROM ContentIds)
+                    RETURNING id
                 )
-                DELETE FROM news_content
-                WHERE id IN (SELECT id FROM ContentIds);
-
-                DELETE FROM news_relationships
-                WHERE fk_content IN (SELECT id FROM ContentIds);
-
                 UPDATE news_content
                 SET block_number = block_number - 1
                 WHERE block_number > @BlockNumber
                 AND id IN (
-                    SELECT fk_content
-                    FROM news_relationships
-                    WHERE fk_news = @NewsId
+                    SELECT nr.fk_content
+                    FROM news_relationships nr
+                    WHERE nr.fk_news = @NewsId
                 );
             ";
             var parameters = new List<NpgsqlParameter>
@@ -293,24 +297,30 @@ public class DeleteCrud : IDeleteCrud
         {
             var commandText = @"
                 DO $$
+                DECLARE
+                    orderId UUID := @OrderId;
                 BEGIN
                     DELETE FROM order_discounts_relationship
-                    WHERE order_id = @OrderId;
+                    WHERE order_id = orderId;
 
                     DELETE FROM order_items_relationship
-                    WHERE fk_order_id = @OrderId;
+                    WHERE fk_order_id = orderId;
 
                     DELETE FROM order_items
-                    WHERE id IN (SELECT fk_order_item_id FROM order_items_relationship WHERE fk_order_id = @OrderId);
+                    WHERE id IN (SELECT fk_order_item_id FROM order_items_relationship WHERE fk_order_id = orderId);
 
                     DELETE FROM orders
-                    WHERE id = @OrderId;
+                    WHERE id = orderId;
                 END;
                 $$;
             ";
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("@OrderId", paramsDto.Id)
+            };
             await _sessionIterator.ExecuteAsync(async context =>
             {
-                await context.Database.ExecuteSqlRawAsync(commandText, new NpgsqlParameter("@OrderId", paramsDto.Id));
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters.ToArray());
             });
         }
         catch (Exception ex)
@@ -332,7 +342,6 @@ public class DeleteCrud : IDeleteCrud
                 DeletedCategoryRelationship AS (
                     DELETE FROM category_relationship
                     WHERE fk_product = @ProductId
-                    RETURNING fk_product
                 ),
                 DeletedProductImageRelationship AS (
                     DELETE FROM product_image_relationship
@@ -342,9 +351,13 @@ public class DeleteCrud : IDeleteCrud
                 DeletedProducts AS (
                     DELETE FROM products
                     WHERE id = @ProductId
-                    RETURNING id
+                ),
+                FinalImageIds AS (
+                    SELECT ImageId FROM DeletedProductImageRelationship
+                    UNION
+                    SELECT ImageId FROM ImageIds
                 )
-                SELECT ImageId FROM ImageIds;
+                SELECT ImageId FROM FinalImageIds;
             ";
             var parameters = new List<NpgsqlParameter>
             {
@@ -368,25 +381,26 @@ public class DeleteCrud : IDeleteCrud
     {
         try
         {
-                var commandText = @"
-                    DO $$
-                    BEGIN
-                        DELETE FROM images
-                        WHERE id = ANY(@ImageIds::uuid[]);
-                        DELETE FROM product_image_relationship
-                        WHERE fk_product = @ProductId AND fk_image = ANY(@ImageIds::uuid[]);
-                    END;
-                    $$;
-                ";
-                var parameters = new List<NpgsqlParameter>
-                {
-                    new NpgsqlParameter("@ProductId", paramsDto.Id),
-                    new NpgsqlParameter("@ImageIds", paramsDto.ImageIds.ToArray())
-                };
-                await _sessionIterator.ExecuteAsync(async context =>
-                {
-                    await context.Database.ExecuteSqlRawAsync(commandText, parameters);
-                });
+            var commandText = @"
+                DO $$
+                BEGIN
+                    DELETE FROM product_image_relationship
+                    WHERE fk_product = @ProductId AND fk_image = ANY(@ImageIds::uuid[]);
+                    
+                    DELETE FROM images
+                    WHERE id = ANY(@ImageIds::uuid[]);
+                END;
+                $$;
+            ";
+            var parameters = new List<NpgsqlParameter>
+            {
+                new NpgsqlParameter("@ProductId", paramsDto.Id),
+                new NpgsqlParameter("@ImageIds", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = paramsDto.ImageIds.ToArray() }
+            };
+            await _sessionIterator.ExecuteAsync(async context =>
+            {
+                await context.Database.ExecuteSqlRawAsync(commandText, parameters.ToArray());
+            });
         }
         catch (Exception ex)
         {

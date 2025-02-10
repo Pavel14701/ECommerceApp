@@ -1,5 +1,10 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Newtonsoft.Json;
+
 
 public abstract class AbsId
 {
@@ -15,14 +20,6 @@ public class CreateProductDto : AbsId
     public decimal Price { get; set; }
     public int Stock { get; set; }
     public string Description { get; set; } = string.Empty;
-}
-
-public class CreateOrderParamsCrudDto : AbsId
-{
-    public required Guid UserId { get; set; }
-    public required DateTime OrderDate { get; set; }
-    public required decimal TotalAmount { get; set; }
-    public required List<Product> OrderItems { get; set; }
 }
 
 public abstract class AbsImage : AbsId
@@ -66,6 +63,30 @@ public class CreateContentTextCrudDto : AbsRelationship
     public Guid? NewsId { get; set; }
 }
 
+public class OrderItemInfo
+{
+    public Guid ProductId { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+}
+
+public abstract class OrderAbs : AbsId
+{
+    public List<OrderItemInfo> Items { get; set; } = new List<OrderItemInfo>();
+}
+
+public class CreateOrderParamsCrudDto : OrderAbs
+{
+    public Guid UserId { get; set; }
+    public DateTime OrderDate { get; set; }
+    public string? DiscountCode { get; set; }
+}
+
+public class OrderCreationResult : OrderAbs
+{
+    public decimal TotalAmount { get; set; }
+}
+
 
 
 public interface ICreateCrud
@@ -74,7 +95,7 @@ public interface ICreateCrud
     Task AddImage(CreateImageCrudDto paramsDto);
     Task AddNewsContentImage(CreateContentImageCrudDto paramsDto);
     Task AddNewsContentText(CreateContentTextCrudDto paramsDto);
-    Task CreateOrder(CreateOrderParamsCrudDto paramsDto);
+    Task<OrderCreationResult> CreateOrder(CreateOrderParamsCrudDto paramsDto);
     Task CreateProduct(CreateProductDto paramsDto);
 }
 
@@ -235,58 +256,168 @@ public class CreateCrud : ICreateCrud
         });
     }
 
-
-    public async Task CreateOrder(CreateOrderParamsCrudDto paramsDto)
+public async Task<OrderCreationResult> CreateOrder(CreateOrderParamsCrudDto paramsDto)
+{
+    Guid orderId = Guid.Empty;
+    List<OrderItemInfo> orderItems = new List<OrderItemInfo>();
+    decimal totalAmount = 0;
+    await _sessionIterator.ExecuteAsync(async context =>
     {
-        await _sessionIterator.ExecuteAsync(async context =>
-        {
-            var commandText = @"
-                WITH order_insert AS (
-                    INSERT INTO orders (id, user_id, order_date, total_amount)
-                    VALUES (@OrderId, @UserId, @OrderDate, @TotalAmount)
-                    RETURNING id
-                ), 
-                product_update AS (
-                    UPDATE products
-                    SET stock = stock - data.quantity
-                    FROM (
-                        SELECT 
-                            (jsonb_array_elements(@OrderItems)->>'ProductId')::UUID AS product_id,
-                            (jsonb_array_elements(@OrderItems)->>'Quantity')::INT AS quantity
-                        FROM orders
-                        WHERE id = @OrderId
-                    ) AS data
-                    WHERE products.id = data.product_id
-                    RETURNING products.id AS product_id
-                ),
-                order_items_insert AS (
-                    INSERT INTO order_items (id, quantity, unit_price)
-                    SELECT 
-                        uuid_generate_v4(), 
-                        (jsonb_array_elements(@OrderItems)->>'Quantity')::INT,
-                        (jsonb_array_elements(@OrderItems)->>'UnitPrice')::NUMERIC
-                    FROM orders
-                    WHERE id = @OrderId
-                    RETURNING id
-                )
+        var commandText = @"
+            DECLARE @OrderId UUID = @OrderIdParam;
+
+            WITH order_items_data AS (
+                SELECT 
+                    data.product_id,
+                    data.quantity,
+                    p.price AS unit_price
+                FROM
+                    (SELECT 
+                        (jsonb_array_elements(@OrderItems)->>'ProductId')::UUID AS product_id,
+                        (jsonb_array_elements(@OrderItems)->>'Quantity')::INT AS quantity
+                     ) AS data
+                JOIN products p ON p.id = data.product_id
+            ),
+            order_insert AS (
+                INSERT INTO orders (id, user_id, order_date, total_amount)
+                VALUES (@OrderId, @UserId, @OrderDate, 0)
+                RETURNING id
+            ), 
+            product_update AS (
+                UPDATE products
+                SET stock = stock - data.quantity
+                FROM order_items_data AS data
+                WHERE products.id = data.product_id
+                RETURNING products.id AS product_id
+            ),
+            order_items_insert AS (
+                INSERT INTO order_items (id, quantity, unit_price)
+                SELECT 
+                    uuid_generate_v4(), 
+                    data.quantity,
+                    data.unit_price
+                FROM order_items_data AS data
+                RETURNING id, data.product_id, data.quantity
+            ),
+            order_items_relationship_insert AS (
                 INSERT INTO order_items_relationship (id, fk_order_id, fk_order_item_id)
                 SELECT
                     uuid_generate_v4(),
                     @OrderId,
                     order_items_insert.id
-                FROM order_items_insert;
-            ";
-            var parameters = new[]
+                FROM order_items_insert
+                RETURNING id
+            ),
+            OrderTotal AS (
+                SELECT 
+                    @OrderId AS OrderId,
+                    SUM(data.quantity * data.unit_price) AS TotalOrderItemsAmount
+                FROM order_items_data AS data
+            ),
+            ApplicableDiscount AS (
+                SELECT 
+                    @OrderId AS OrderId,
+                    CASE
+                        WHEN d.fk_category IS NULL THEN d.amount
+                        ELSE SUM(CASE WHEN p.category_id = d.fk_category THEN d.amount ELSE 0 END)
+                    END AS TotalDiscountAmount
+                FROM 
+                    orders o
+                LEFT JOIN 
+                    order_discounts_relationship odr ON o.id = odr.order_id
+                LEFT JOIN 
+                    discounts d ON odr.discount_id = d.id
+                LEFT JOIN 
+                    order_items_relationship oir ON o.id = oir.fk_order_id
+                LEFT JOIN 
+                    order_items oi ON oir.fk_order_item_id = oi.id
+                LEFT JOIN 
+                    products p ON oi.product_id = p.id
+                WHERE 
+                    o.id = @OrderId
+                    AND d.code = @DiscountCode
+                GROUP BY 
+                    o.id, d.amount, d.fk_category
+            )
+
+            UPDATE orders
+            SET total_amount = (
+                SELECT 
+                    (ot.TotalOrderItemsAmount - COALESCE(ad.TotalDiscountAmount, 0)) AS FinalTotalAmount
+                FROM 
+                    OrderTotal ot
+                LEFT JOIN 
+                    ApplicableDiscount ad ON ot.OrderId = ad.OrderId
+                WHERE 
+                    ot.OrderId = @OrderId
+            )
+            WHERE id = @OrderId;
+
+            SELECT 
+                @OrderId AS OrderId,
+                order_items_insert.product_id,
+                order_items_insert.quantity,
+                (
+                    SELECT 
+                        (ot.TotalOrderItemsAmount - COALESCE(ad.TotalDiscountAmount, 0)) AS FinalTotalAmount
+                    FROM 
+                        OrderTotal ot
+                    LEFT JOIN 
+                        ApplicableDiscount ad ON ot.OrderId = ad.OrderId
+                    WHERE 
+                        ot.OrderId = @OrderId
+                ) AS TotalAmount
+            FROM 
+                order_items_insert;
+        ";
+        var parameters = new[]
+        {
+            new NpgsqlParameter("@OrderId", paramsDto.Id),
+            new NpgsqlParameter("@OrderIdParam", paramsDto.Id),
+            new NpgsqlParameter("@UserId", paramsDto.UserId),
+            new NpgsqlParameter("@OrderDate", paramsDto.OrderDate),
+            new NpgsqlParameter("@OrderItems", JsonConvert.SerializeObject(paramsDto.Items)),
+            new NpgsqlParameter("@DiscountCode", paramsDto.DiscountCode)
+        };
+        var products = new List<OrderItemInfo>();
+        using (var command = context.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText = commandText;
+            command.Parameters.AddRange(parameters);
+            await context.Database.OpenConnectionAsync();
+            using (var reader = await command.ExecuteReaderAsync())
             {
-                new NpgsqlParameter("@OrderId", paramsDto.Id),
-                new NpgsqlParameter("@UserId", paramsDto.UserId),
-                new NpgsqlParameter("@OrderDate", paramsDto.OrderDate),
-                new NpgsqlParameter("@TotalAmount",paramsDto.TotalAmount),
-                new NpgsqlParameter("@OrderItems", Newtonsoft.Json.JsonConvert.SerializeObject(paramsDto.OrderItems))
-            };
-        await context.Database.ExecuteSqlRawAsync(commandText, parameters);
-        });
-    }
+                while (await reader.ReadAsync())
+                {
+                    products.Add(new OrderItemInfo
+                    {
+                        ProductId = reader.GetGuid(1),
+                        Quantity = reader.GetInt32(2),
+                        UnitPrice = reader.GetDecimal(3)
+                    });
+                }
+            }
+            await context.Database.CloseConnectionAsync();
+        }
+        foreach (var product in products)
+        {
+            orderId = product.ProductId;
+            totalAmount += product.Quantity * product.UnitPrice;
+            orderItems.Add(new OrderItemInfo
+            {
+                ProductId = product.ProductId,
+                Quantity = product.Quantity,
+                UnitPrice = product.UnitPrice
+            });
+        }
+    });
+    return new OrderCreationResult
+    {
+        Id = orderId,
+        Items = orderItems,
+        TotalAmount = totalAmount
+    };
+}
 
 
 

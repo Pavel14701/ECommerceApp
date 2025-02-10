@@ -31,23 +31,6 @@ public class Order
 
     [InverseProperty("Order")]
     public List<OrderDiscountRelationship> OrderDiscounts { get; set; } = new List<OrderDiscountRelationship>();
-
-    public void CalculateTotalAmount()
-    {
-        decimal total = 0;
-
-        foreach (var item in OrderItems)
-        {
-            total += item.OrderItem.Quantity * item.OrderItem.UnitPrice;
-        }
-
-        foreach (var discount in OrderDiscounts)
-        {
-            total -= discount.Discount.Amount;
-        }
-
-        TotalAmount = total;
-    }
 }
 
 
@@ -84,6 +67,9 @@ public class Discount
     [Required]
     [Column("code", TypeName = "varchar(50)")]
     public required string Code { get; set; }
+
+    [Column("fk_category", TypeName = "uuid")]
+    public required Guid? Category { get; set; } 
 
     [Required]
     [Column("amount", TypeName = "numeric(10,2)")]
@@ -147,17 +133,3 @@ public class OrderDiscountRelationship
     [InverseProperty("OrderDiscountRelationships")]
     public required Discount Discount { get; set; }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

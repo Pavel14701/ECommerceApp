@@ -1,7 +1,9 @@
 public class DeleteNewsParamsDto : ReadNewsIdDto
-{}
+{
+    public required Guid NewsId { get; set;}
+}
 
-public class RemoveNewsImageParamsDto : ReadNewsIdDto
+public class RemoveNewsImageParamsDto : DeleteNewsParamsDto
 {
     public required int BlockNumber { get; set; }
 }
@@ -22,184 +24,90 @@ public interface IDeleteNewsService
 
 public class DeleteNewsService : IDeleteNewsService
 {
-    private readonly SessionIterator _sessionIterator;
-    private readonly ReadCrud _readCrud;
     private readonly DeleteCrud _delCrud;
     private readonly ImageUploader _imageUploader;
     public DeleteNewsService(
-        SessionIterator sessionIterator,
-        ReadCrud readCrud,
         DeleteCrud delCrud,
         ImageUploader imageUploader
     )
     {
-        _sessionIterator = sessionIterator;
-        _readCrud = readCrud;
         _delCrud = delCrud;
         _imageUploader = imageUploader;
     }
 
     public async Task<Result> DeleteNews(DeleteNewsParamsDto paramsDto)
     {
-        var result = await _readCrud.GetNewsIdByTitleAndDate(
-            new ReadNewsIdDto
-            {
-                Title = paramsDto.Title,
-                PublishDatetime = paramsDto.PublishDatetime
-            }
-        );
-        if (result is not null)
+        try{
+            await _delCrud.DeleteNews
+            (
+                new DeleteNewsParamsCrudDto{ Id = paramsDto.NewsId }
+            );
+            var imgIds = await _delCrud.DeleteAllImagesByNewsId
+            (
+                new DeleteImageParamsCrudDto{ Id = paramsDto.NewsId }
+            );
+            await _delCrud.DeleteAllTextBlocksByNewsId
+            (
+                new DeleteTextParamsCrudDto{ Id = paramsDto.NewsId }
+            );
+            await _imageUploader.DeleteImages
+            (
+                new ImageDeleteParamsDto{ ImageIds = imgIds }
+            );
+            return new Result{ Success = true };
+        }   
+        catch (Exception ex)
         {
-            try
+            return new Result
             {
-                await _sessionIterator.ExecuteAsync(async context =>
-                {
-                    await _delCrud.DeleteNews(
-                        new DeleteNewsParamsCrudDto
-                        {
-                            Context = context,
-                            Id = result
-                        }
-                    );
-                    var imgIds = await _delCrud.DeleteAllImagesByNewsId(
-                        new DeleteImageParamsCrudDto
-                        {
-                            Context = context,
-                            Id = result
-                        }
-                    );
-                    await _delCrud.DeleteAllTextBlocksByNewsId(
-                        new DeleteTextParamsCrudDto
-                        {
-                            Context = context,
-                            Id = result
-                        }
-                    );
-                    await _imageUploader.DeleteImages(
-                        new ImageDeleteParamsDto
-                        {
-                            ImageIds = imgIds
-                        }
-                    );
-                });
-                return new Result
-                {
-                    Success = true
-                };
-            }   
-            catch (Exception ex)
-            {
-                return new Result
-                {
-                    Success = false,
-                    Message = $"Error: {ex}"
-                };
-            }
+                Success = false,
+                Message = $"Error: {ex}"
+            };
         }
-        return new Result
-        {
-            Success = false,
-            Message = "News not founded"
-        };
     }
 
     public async Task<Result> RemoveImageFromNews(RemoveNewsImageParamsDto paramsDto)
     {
-        var result = await _readCrud.GetNewsIdByTitleAndDate(
-            new ReadNewsIdDto
-            {
-                Title = paramsDto.Title,
-                PublishDatetime = paramsDto.PublishDatetime
-            }
-        );
-        if ( result is not null )
-        {
-            try
-            {
-                await _sessionIterator.ExecuteAsync(async context =>
+        try{
+            var imgIds = await _delCrud.DeleteImagesByNewsIdAndBlockNumber(
+                new DeleteNewsImageParamsDto
                 {
-                    var imgIds = await _delCrud.DeleteImagesByNewsIdAndBlockNumber(
-                        new DeleteNewsImageParamsDto
-                        {
-                            Context = context, 
-                            Id = result,
-                            BlockNumber = paramsDto.BlockNumber
-                        }
-                    );
-                    await _imageUploader.DeleteImages(
-                        new ImageDeleteParamsDto
-                        {
-                            ImageIds = imgIds
-                        }
-                    );
+                    Id = paramsDto.NewsId,
+                    BlockNumber = paramsDto.BlockNumber
                 }
             );
+            await _imageUploader.DeleteImages
+            (
+                new ImageDeleteParamsDto{ ImageIds = imgIds }
+            );
+            return new Result{ Success = true };
+        }
+        catch (Exception ex)
+        {
             return new Result
             {
-                Success = true
+                Success = false,
+                Message = $"Error: {ex}" 
             };
-            }
-            catch (Exception ex)
-            {
-                return new Result
-                {
-                    Success = false,
-                    Message = $"Error: {ex}" 
-                };
-            }
         }
-        return new Result
-        {
-            Success = false,
-            Message = "News not founded"
-        };
     } 
 
 
     public async Task<Result> RemoveTextBlockFromNews(RemoveTextBlockParamsDto paramsDto)
     {
-        var result = await _readCrud.GetNewsIdByTitleAndDate(
-            new ReadNewsIdDto
-            {
-                Title = paramsDto.Title,
-                PublishDatetime = paramsDto.PublishDatetime
-            }
-        );
-        if ( result is not null )
-        {
-            try
-            {
-                await _sessionIterator.ExecuteAsync(async context =>
+        try{
+            await _delCrud.DeleteTextBlockByNewsIdAndBlockNumber(
+                new DeleteTextBlockImageParamsDto
                 {
-                    await _delCrud.DeleteTextBlockByNewsIdAndBlockNumber(
-                        new DeleteTextBlockImageParamsDto
-                        {
-                            Context = context,
-                            Id = result,
-                            BlockNumber = paramsDto.BlockNumber
-                        }
-                    );
+                    Id = paramsDto.NewsId,
+                    BlockNumber = paramsDto.BlockNumber
                 }
-                );
-                return new Result
-                {
-                    Success = true
-                };
-            }
-            catch (Exception ex)
-            {
-                return new Result
-                {
-                    Success = false,
-                    Message = $"Error: {ex}"
-                };
-            }
+            );
+            return new Result{ Success = true };
         }
-        return new Result
+        catch (Exception ex)
         {
-            Success = false,
-            Message = "News not founded"
-        };
+            return new Result{ Success = false, Message = $"Error: {ex}" };
+        }
     }
-
 }

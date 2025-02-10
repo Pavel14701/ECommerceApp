@@ -13,16 +13,6 @@ public interface IEventHandler
     void StartListening();
 }
 
-public interface IProcessedEventService
-{
-    Task<bool> IsEventProcessed(Guid eventId);
-    Task MarkEventAsProcessed(Guid eventId);
-}
-
-public interface ICommandHandler
-{
-    Task HandleCommandAsync<T>(BasicDeliverEventArgs ea, Func<Task<T>>  handleFunc);
-}
 
 public interface IRabbitMQInitializer
 {

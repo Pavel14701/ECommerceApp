@@ -1,32 +1,32 @@
-public class OrderCreationParamsDto
+public class CreateOrderParamsDto
 {
+    public List<OrderItemInfo> Items { get; set; } = new List<OrderItemInfo>();
+    public Guid UserId { get; set; }
 
+    public string? DiscountCode { get; set; }
 }
 
 
-public class ResultOrderDto : Result
+public class OrderResult : Result
 {
-    public OrderDto? Order { get; protected set; }
-    
-    public ResultOrderDto(Result result, OrderDto? order)
-    {
-        Success = result.Success;
-        Message = result.Message;
-        Order = order;
-    }
+    public OrderCreationResult? Order { get; set; }
+}
+
+public class ResultReadOrder : Result
+{
+    public OrderDto? Order { get; set; }
 }
 
 
 
 public interface IOrderService
 {
-    Task<Result> CreateOrder(OrderCreationParamsDto paramsDto);
+    Task<OrderResult> CreateOrder(CreateOrderParamsDto paramsDto);
 }
 
 
 public class OrderService : IOrderService
 {
-    private readonly SessionIterator _sessionIterator;
     private readonly CreateCrud _createCrud;
     private readonly ReadCrud _readCrud;
     private readonly UpdateCrud _updateCrud;
@@ -34,34 +34,39 @@ public class OrderService : IOrderService
 
     public OrderService
     (
-        SessionIterator sessionIterator,
         CreateCrud createCrud,
         ReadCrud readCrud,
         UpdateCrud updateCrud,
         DeleteCrud delCrud
     )
     {
-        _sessionIterator = sessionIterator;
         _createCrud = createCrud;
         _readCrud = readCrud;
         _updateCrud = updateCrud;
         _delCrud = delCrud;
     }
 
-    public async Task<Result> CreateOrder(OrderCreationParamsDto paramsDto)
-    {
+    public async Task<OrderResult> CreateOrder(CreateOrderParamsDto paramsDto)
+    { 
         try{
-            order.OrderDate = DateTime.UtcNow;
-            order.CalculateTotalAmount();
-            return new Result
+            var result = await _createCrud.CreateOrder(new CreateOrderParamsCrudDto
             {
+                Id = Guid.NewGuid(),
+                UserId = paramsDto.UserId,
+                OrderDate = DateTime.UtcNow,
+                Items  = paramsDto.Items,
+                DiscountCode = paramsDto.DiscountCode
+            });
+            return new OrderResult
+            {
+                Order = result,
                 Success = true
             };
         }
         catch (Exception ex)
         {
-            return new Result
-            {
+            return new OrderResult
+            {   
                 Success = false,
                 Message = $"Error: {ex}"
             };
@@ -69,40 +74,20 @@ public class OrderService : IOrderService
     }
 
 
-
-    public async Task<Result> ApplyDiscount(Guid orderId, string promocode)
+    public async Task<ResultReadOrder> GetOrderById(Guid orderId)
     {
         try
-        {
-            return new Result
-                {
-                    Success = true
-                };
-        }
-        catch (Exception ex)
-        {
-            return new Result
-            {
-                Success = false,
-                Message = $"Error: {ex}"
+        {   var result = await _readCrud.GetOrderById(orderId);
+            return new ResultReadOrder{
+                Success = true,
+                Order = result?? throw new Exception("Nulled order")
             };
         }
-    }
-
-
-    public async Task<ResultOrderDto> GetOrderById(Guid orderId)
-    {
-        try
-        {
-            return new ResultOrderDto(
-                new Result { Success = true}, null
-            );
-        }
         catch (Exception ex)
         {
-            return new ResultOrderDto(
-                new Result { Success = false, Message = $"Error: {ex}" }, null
-            );
+            return new ResultReadOrder{
+                Success = false, Message = $"Error: {ex}"
+            };
         }
     }
 
@@ -110,6 +95,9 @@ public class OrderService : IOrderService
     {
         try
         {
+            await _delCrud.DeleteOrder(new DeleteOrderParamsCrudDto{
+                Id = orderId
+            }) ;
             return new Result
             {
                 Success = true

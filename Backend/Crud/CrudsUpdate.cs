@@ -3,7 +3,6 @@ using Npgsql;
 
 public abstract class UpdateNewsParamsBase
 {
-    public required ApplicationDbContext Context { get; set; }
     public required Guid NewsId { get; set; }
 }
 
@@ -14,7 +13,7 @@ public class UpdateNewsTitleParamsDto : UpdateNewsParamsBase
 
 public class UpdateNewsImagesParamsDto : UpdateNewsParamsBase
 {
-    public required Dictionary<Guid, string> NewImageUrls { get; set; }
+    public required Dictionary<Guid, string> ImagesData { get; set; }
     public required int BlockNumber { get; set; }
 }
 
@@ -24,6 +23,16 @@ public class UpdateNewsTextParamsDto : UpdateNewsParamsBase
     public required int BlockNumber { get; set; }
 }
 
+public class UpdateNewsPreviewParamsDto
+{
+    public Guid NewsId { get; set; }
+    public string? NewTitle { get; set; }
+    public Guid? NewImageId { get; set; }
+    public string? NewImageUrl { get; set; }
+    public string? NewText { get; set; }
+}
+
+
 
 public class UpdateProductParamsDto : UpdateProductDto
 {
@@ -32,14 +41,11 @@ public class UpdateProductParamsDto : UpdateProductDto
 
 
 
-
-
-
 public interface IUpdateCrud
 {
     Task UpdateNewsTitle(UpdateNewsTitleParamsDto paramsDto);
-    Task UpdateImagesByBlockNumber(UpdateNewsImagesParamsDto paramsDto);
-    Task UpdateTextBlock(UpdateNewsTextParamsDto paramsDto);
+    Task UpdateNewsImagesByBlockNumber(UpdateNewsImagesParamsDto paramsDto);
+    Task UpdateNewsTextBlock(UpdateNewsTextParamsDto paramsDto);
     Task UpdateProductStock(Guid productId, int quantity);
     Task ApplyDiscountToOrder(Guid orderId, Guid discountId);
 }
@@ -79,7 +85,7 @@ public class UpdateCrud : IUpdateCrud
         }
     }
 
-    public async Task UpdateImagesByBlockNumber(UpdateNewsImagesParamsDto paramsDto)
+    public async Task UpdateNewsImagesByBlockNumber(UpdateNewsImagesParamsDto paramsDto)
     {
         try
         {
@@ -87,10 +93,10 @@ public class UpdateCrud : IUpdateCrud
                 UPDATE images
                 SET image_url = CASE
             ";
-            foreach (var imageUrl in paramsDto.NewImageUrls)
+            foreach (var imageData in paramsDto.ImagesData)
             {
                 commandText += $@"
-                    WHEN image_id = '{imageUrl.Key}' THEN '{imageUrl.Value}'";
+                    WHEN image_id = '{imageData.Key}' THEN '{imageData.Value}'";
             }
             commandText += @"
                     ELSE image_url
@@ -122,7 +128,7 @@ public class UpdateCrud : IUpdateCrud
         }
     }
 
-    public async Task UpdateTextBlock(UpdateNewsTextParamsDto paramsDto)
+    public async Task UpdateNewsTextBlock(UpdateNewsTextParamsDto paramsDto)
     {
         try
         {
@@ -155,6 +161,96 @@ public class UpdateCrud : IUpdateCrud
         }
     }
 
+public async Task<List<Guid>> UpdateNewsPreview(UpdateNewsPreviewParamsDto paramsDto)
+{
+    try
+    {
+        var parameters = new List<NpgsqlParameter>
+        {
+            new NpgsqlParameter("@NewsId", paramsDto.NewsId)
+        };
+        var commandText = "WITH ";
+        if (!string.IsNullOrEmpty(paramsDto.NewTitle))
+        {
+            commandText += @"
+                updated_news AS (
+                    UPDATE news
+                    SET news_title = @NewTitle,
+                        update_datetime = NOW()
+                    WHERE id = @NewsId
+                    RETURNING id
+                ),";
+            parameters.Add(new NpgsqlParameter("@NewTitle", paramsDto.NewTitle));
+        }
+        commandText += @"
+            current_images AS (
+                SELECT id, image_url
+                FROM images
+                WHERE id IN (
+                    SELECT nir.image_id
+                    FROM news_images_relationship nir
+                    JOIN news_content nc ON nir.fk_news_id = nc.fk_news_id
+                    WHERE nc.fk_news_id = @NewsId AND nc.block_number = 1
+                )
+            )
+        ";
+        if (paramsDto.NewImageId.HasValue && !string.IsNullOrEmpty(paramsDto.NewImageUrl))
+        {
+            commandText += @",
+            updated_images AS (
+                UPDATE images
+                SET image_url = @NewImageUrl,
+                    id = @NewImageId
+                WHERE id IN (
+                    SELECT nir.image_id
+                    FROM news_images_relationship nir
+                    JOIN news_content nc ON nir.fk_news_id = nc.fk_news_id
+                    WHERE nc.fk_news_id = @NewsId AND nc.block_number = 1
+                )
+                RETURNING id
+            )";
+            parameters.Add(new NpgsqlParameter("@NewImageId", paramsDto.NewImageId));
+            parameters.Add(new NpgsqlParameter("@NewImageUrl", paramsDto.NewImageUrl));
+        }
+        if (!string.IsNullOrEmpty(paramsDto.NewText))
+        {
+            commandText += @",
+            updated_text AS (
+                UPDATE news_content
+                SET text = @NewText
+                WHERE fk_news_id = @NewsId AND block_number = 2
+                RETURNING fk_news_id
+            )";
+            parameters.Add(new NpgsqlParameter("@NewText", paramsDto.NewText));
+        }
+        commandText += @",
+            return_old_image_data AS (
+                SELECT id
+                FROM current_images
+            )
+            SELECT id FROM return_old_image_data;
+        ";
+        List<Guid> oldImageIds = new List<Guid>();
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var result = await context.Set<OldImageDataResult>().FromSqlRaw(commandText, parameters.ToArray()).ToListAsync();
+            oldImageIds = result.Select(r => r.Id).ToList();
+        });
+        return oldImageIds;
+    }
+    catch (Exception ex)
+    {
+        throw new Exception("An error occurred while updating news details and retrieving old image data.", ex);
+    }
+}
+
+
+
+    private class OldImageDataResult
+    {
+        public Guid Id { get; set; }
+        public string ImageUrl { get; set; } = string.Empty;
+    }
 
 
 

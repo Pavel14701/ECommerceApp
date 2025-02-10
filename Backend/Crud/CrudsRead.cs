@@ -585,7 +585,6 @@ public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto par
                         p.description AS Description,
                         p.discount AS Discount,
                         p.stock AS Stock,
-                        ROW_NUMBER() OVER (ORDER BY p.name) AS RowNum,
                         COUNT(*) OVER() AS TotalCount
                     FROM 
                         products p
@@ -595,9 +594,11 @@ public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto par
                         (@Name IS NULL OR p.name ILIKE '%' || @Name || '%') AND
                         (@MinPrice IS NULL OR p.price >= @MinPrice) AND
                         (@MaxPrice IS NULL OR p.price <= @MaxPrice) AND
-                        (@HasDiscount IS NULL OR (@HasDiscount = TRUE AND p.discount IS NOT NULL) OR (@HasDiscount = FALSE AND p.discount IS NULL)) AND
+                        (@HasDiscount IS NULL OR (p.discount IS NOT NULL AND @HasDiscount = TRUE) OR (p.discount IS NULL AND @HasDiscount = FALSE)) AND
                         (cr.fk_category = ANY(@CategoryIds::uuid[]) OR @CategoryIds IS NULL) AND
                         (cr.fk_subcategory = ANY(@SubcategoryIds::uuid[]) OR @SubcategoryIds IS NULL)
+                    ORDER BY p.name
+                    LIMIT @Limit OFFSET @Offset
                 ),
                 ImageData AS (
                     SELECT
@@ -622,12 +623,10 @@ public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto par
                     ProductData pd
                 LEFT JOIN 
                     ImageData i ON pd.ProductId = i.ProductId
-                WHERE 
-                    pd.RowNum BETWEEN @Offset AND @Offset + @Limit - 1
                 GROUP BY 
                     pd.ProductId, pd.ProductName, pd.Price, pd.Description, pd.Discount, pd.Stock, pd.TotalCount
                 ORDER BY 
-                    pd.RowNum;
+                    pd.ProductName;
             ";
             var parameters = new List<NpgsqlParameter>
             {
@@ -642,28 +641,25 @@ public async Task<List<NewsPreviewDto>> GetPaginatedNews(PaginationParamsDto par
             };
             var productList = new Dictionary<Guid, ProductInfoSearchDto>();
             int totalCount = 0;
-            return await _sessionIterator.ReadAsync(async context =>
+            var result = await _sessionIterator.ReadAsync(async context =>
+            {
+                var products = await context.Set<ProductInfoSearchDto>().FromSqlRaw(sql, parameters.ToArray()).ToListAsync();
+                foreach (var product in products)
                 {
-                    var products = await context.Set<ProductInfoSearchDto>().FromSqlRaw(sql, parameters).ToListAsync();
-                    foreach (var product in products)
+                    if (totalCount == 0)
                     {
-                        if (totalCount == 0)
-                        {
-                            totalCount = product.TotalCount;
-                        }
-                        productList.Add(product.Id, product);
+                        totalCount = product.TotalCount;
                     }
-                return (totalCount, productList);
+                    productList.Add(product.Id, product);
                 }
-            );
+                return (totalCount, productList);
+            });
+            return result;
         }
-        catch (Exception )
+        catch (Exception ex)
         {
-            throw;
+            throw new Exception("An error occurred while searching for products.", ex);
         }
     }
-
-
-
 }
 

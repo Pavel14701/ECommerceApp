@@ -37,18 +37,15 @@ public interface ICreateNewsService
 
 public class CreateNewsService : ICreateNewsService
 {
-    private readonly SessionIterator _sessionIterator;
     private readonly CreateCrud _createCrud;
     private readonly ReadCrud _readCrud;
     private readonly ImageUploader _imageUploader;
     public CreateNewsService(
         CreateCrud createCrud,
         ReadCrud readCrud,
-        SessionIterator sessionIterator,
         ImageUploader imageUploader
     )
     {
-        _sessionIterator = sessionIterator;
         _createCrud = createCrud;
         _readCrud = readCrud;
         _imageUploader = imageUploader;
@@ -57,84 +54,35 @@ public class CreateNewsService : ICreateNewsService
     public async Task<Result> AddNews(AddNewsParamsDto paramsDto)
     {
         var imageId = Guid.NewGuid();
-        var publishDatetime = DateTime.UtcNow;
-        var updateDatetime = DateTime.UtcNow;
-        var newsId = Guid.NewGuid();
-        var newsContentIdImage = Guid.NewGuid();
-        var newsContentIdText = Guid.NewGuid();
-        try
+        try {
+        var result = await _imageUploader.UploadImage(new ImageUploadParamsDto{
+            ImageId = imageId,
+            File = paramsDto.File
+        });
+        await _createCrud.AddNews(new CreateNewsCrudDto{
+            Id = Guid.NewGuid(),
+            AltText = paramsDto.AltText,
+            ImageUrl = result.FilePath?? throw new Exception(),
+            ImageId = imageId,
+            ContentIdImage = Guid.NewGuid(),
+            ContentIdText = Guid.NewGuid(),
+            NewsTitle = paramsDto.TextTitle,
+            TextContent = paramsDto.TextContent
+        });
+        return new Result
         {
-            await _sessionIterator.ExecuteAsync(async context =>
-            {
-                await _createCrud.AddNews(
-                    new CreateNewsCrudDto
-                    {
-                        Context = context, 
-                        Id = newsId,
-                        Title = paramsDto.TextTitle,
-                        PublishDatetime = publishDatetime,
-                        UpdateDatetime = updateDatetime
-                    }
-                );
-                var result = await _imageUploader.UploadImage(
-                    new ImageUploadParamsDto
-                    {
-                        ImageId = imageId,
-                        File = paramsDto.File,
-                    }
-                );
-                if (result.FilePath == null)
-                {
-                    throw new Exception("File upload failed, no file path returned.");
-                }
-                await _createCrud.AddImage(
-                    new CreateImageCrudDto
-                    {
-                        Context = context,
-                        Id = imageId,
-                        ImageUrl = result.FilePath,
-                        NewsId = newsId,
-                        AltText = paramsDto.AltText
-                    }
-                );
-                await _createCrud.AddNewsContentImage(
-                    new CreateContentImageCrudDto
-                    {
-                        Context = context,
-                        Id = Guid.NewGuid(),
-                        ImageId = imageId,
-                        BlockNumber = 1
-                    }
-                );
-                await _createCrud.AddNewsContentText(
-                    new CreateContentTextCrudDto
-                    {
-                        Context = context,
-                        Id = Guid.NewGuid(),
-                        TextContent = paramsDto.TextContent,
-                        BlockNumber = 2
-                    }
-                );
-            });
-            return new Result
-            {
-                Success = true,
-                Message = $"News with ID: {newsId} has been created."
-            };
-        }
+            Success = true,
+            Message = $"News has been created."
+        };}
         catch (Exception ex)
         {
-            List<Guid> imageIds = new List<Guid> { imageId };
-            var result = await _imageUploader.DeleteImages(
-                new ImageDeleteParamsDto
-                {
-                    ImageIds = imageIds
-                }
-            );
-            return new Result
+            try
             {
-                Success = false,
-                Message = $"Error: {ex.Message}"
+                List<Guid> imageIds = new List<Guid> { imageId };
+                var result = await _imageUploader.DeleteImages(new ImageDeleteParamsDto{ImageIds = imageIds});
+            }catch{}
+            return new Result{
+                Success = false, Message = $"Error: {ex.Message}"
             };
         }
     }
@@ -142,64 +90,47 @@ public class CreateNewsService : ICreateNewsService
 
     public async Task<Result> AddImageToNews(AddImageNewsDto paramsDto)
     {
-        var uploadResults = new Dictionary<Guid, ImageUplodedDto>();
-        foreach (var file in paramsDto.Images)
+        var checkResult = await _readCrud.CheckNews(new CheckNewsCrudDto { NewsId = paramsDto.NewsId });
+        if (checkResult is true)
         {
-            var imageId = Guid.NewGuid();
-            uploadResults[imageId] = new ImageUplodedDto();
-        }        
-        var checkResult = await _readCrud.CheckNews(
-            new CheckNewsCrudDto
-            {
-                NewsId = paramsDto.NewsId
-            }
-        );
-        if (checkResult.Success)
-        {
+            Dictionary<Guid, ImageUplodedDto> uploadResults = new Dictionary<Guid, ImageUplodedDto>();
             try
             {
-                await _sessionIterator.ExecuteAsync(async context =>
+                foreach (var file in paramsDto.Images)
                 {
-                    foreach (var kvp in uploadResults.ToList())
+                    var imageId = Guid.NewGuid();
+                    uploadResults[imageId] = new ImageUplodedDto();
+                }
+                foreach (var kvp in uploadResults.ToList())
+                {
+                    var imageId = kvp.Key;
+                    var file = paramsDto.Images[uploadResults.Keys.ToList().IndexOf(imageId)];
+                    var uploadParams = new ImageUploadParamsDto { File = file, ImageId = imageId };
+                    var result = await _imageUploader.UploadImage(uploadParams);
+                    uploadResults[imageId] = result;
+                }
+                if (uploadResults.Count == paramsDto.AltTexts.Count)
+                {
+                    int index = 0;
+                    foreach (var kvp in uploadResults)
                     {
-                        var imageId = kvp.Key;
-                        var file = paramsDto.Images[uploadResults.Keys.ToList().IndexOf(imageId)];
-                        var uploadParams = new ImageUploadParamsDto
+                        await _createCrud.AddImage(new CreateImageCrudDto
                         {
-                            File = file,
-                            ImageId = imageId
-                        };
-                        var result = await _imageUploader.UploadImage(uploadParams);
-                        uploadResults[imageId] = result;
-                    }
-                    if (uploadResults.Count == paramsDto.AltTexts.Count)
-                    {
-                        int index = 0;
-                        foreach (var kvp in uploadResults)
+                            Id = kvp.Key,
+                            ImageUrl = kvp.Value.FilePath ?? string.Empty,
+                            AltText = paramsDto.AltTexts[index],
+                            NewsId = paramsDto.NewsId,
+                            RelationshipId = Guid.NewGuid()
+                        });
+                        await _createCrud.AddNewsContentImage(new CreateContentImageCrudDto
                         {
-                            await _createCrud.AddImage(
-                                new CreateImageCrudDto
-                                {
-                                    Context = context,
-                                    Id = kvp.Key,
-                                    ImageUrl = kvp.Value.FilePath ?? string.Empty, // Проверяем на null
-                                    AltText = paramsDto.AltTexts[index],
-                                    NewsId = paramsDto.NewsId
-                                }
-                            );
-                            await _createCrud.AddNewsContentImage(
-                                new CreateContentImageCrudDto
-                                {
-                                    Context = context,
-                                    ImageId = kvp.Key,
-                                    Id = Guid.NewGuid(),
-                                    BlockNumber = paramsDto.BlockNumber
-                                }
-                            );
-                            index++;
-                        }
-                    }
-                });
+                            ImageId = kvp.Key,
+                            Id = Guid.NewGuid(),
+                            BlockNumber = paramsDto.BlockNumber,
+                            RelationshipId = Guid.NewGuid()
+                        });
+                        index++;
+                }}
                 return new Result
                 {
                     Success = true,
@@ -208,12 +139,14 @@ public class CreateNewsService : ICreateNewsService
             }
             catch (Exception ex)
             {
-                await _imageUploader.DeleteImages(
-                    new ImageDeleteParamsDto
+                try
+                {
+                    await _imageUploader.DeleteImages(new ImageDeleteParamsDto
                     {
                         ImageIds = uploadResults.Keys.ToList()
-                    }
-                );
+                    });
+                }
+                catch { }
                 return new Result
                 {
                     Success = false,
@@ -228,43 +161,32 @@ public class CreateNewsService : ICreateNewsService
         };
     }
 
+
     public async Task<Result> AddTextToNews(AddTextNewsDto paramsDto)
     {
-        var result = await _readCrud.GetNewsIdByTitleAndDate(
-            new ReadNewsIdDto
-            {
-                Title = paramsDto.Title,
-                PublishDatetime = paramsDto.PublishDatetime
-            }
-        );
-        if (result != null)
+        var checkResult = await _readCrud.CheckNews( new CheckNewsCrudDto { NewsId = paramsDto.NewsId } );
+        if (checkResult is true)
         {
-            await _sessionIterator.ExecuteAsync(async context =>
+            try{
+                await _createCrud.AddNewsContentText(new CreateContentTextCrudDto{
+                    TextContent = paramsDto.TextContent,
+                    Id = Guid.NewGuid(),
+                    NewsId = paramsDto.NewsId,
+                    BlockNumber = paramsDto.BlockNumber,
+                    RelationshipId = Guid.NewGuid()
+                });
+                return new Result{Success = true, Message = "Image Added"};
+            }
+            catch (Exception ex)
             {
-                await _createCrud.AddNewsContentText(
-                    new CreateContentTextCrudDto
-                    {
-                        Context = context,
-                        TextContent = paramsDto.TextContent,
-                        Id = Guid.NewGuid(),
-                        NewsId = result.Id,
-                        BlockNumber = paramsDto.BlockNumber
-                    }
-                );
-            });
-            return new Result
-            {
-                Success = true,
-                Message = "Image Added"
-            };
+                return new Result{ Success = false, Message = $"Error: {ex}" };
+            }
         }
         return new Result
-        {
-            Success = false,
-            Message = @$"
-                News with title: {paramsDto.Title} and
-                publish time {paramsDto.PublishDatetime} is not found"
+        { 
+            Success = false, Message = @$"
+            News with title: {paramsDto.Title} and
+            publish time {paramsDto.PublishDatetime} is not found"
         };
-
     }
 }

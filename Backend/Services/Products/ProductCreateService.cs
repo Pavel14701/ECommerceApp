@@ -16,7 +16,6 @@ public class CreateProductParamsDto
 
 public class ProductCreateService : IProductCreateService
 {
-    private readonly SessionIterator _sessionIterator;
     private readonly CreateCrud _createCrud;
     private readonly ImageUploader _imageUploader;
 
