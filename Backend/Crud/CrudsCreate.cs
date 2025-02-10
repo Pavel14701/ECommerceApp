@@ -13,13 +13,13 @@ public abstract class AbsId
 
 public class CreateProductDto : AbsId
 {
-    public string Name { get; set; } = string.Empty;
-    public Guid RelationshipId { get; set; }
-    public Guid CategoryId { get; set; }
-    public Guid SubcategoryId { get; set; }
-    public decimal Price { get; set; }
-    public int Stock { get; set; }
-    public string Description { get; set; } = string.Empty;
+    public required string Name { get; set; } = string.Empty;
+    public required Guid RelationshipId { get; set; }
+    public required Guid CategoryId { get; set; }
+    public required Guid SubcategoryId { get; set; }
+    public required decimal Price { get; set; }
+    public required int Stock { get; set; }
+    public required string Description { get; set; } = string.Empty;
 }
 
 public abstract class AbsImage : AbsId
@@ -87,12 +87,23 @@ public class OrderCreationResult : OrderAbs
     public decimal TotalAmount { get; set; }
 }
 
+public class CreateImageDto
+{
+    public required Guid Id { get; set; }
+    public required string ImageUrl { get; set; }
+    public required string Alt { get; set; }
+}
 
+public class AddProductImage
+{
+    public required Guid ProductId { get; set; }
+    public required List<CreateImageDto> Images{ get; set; }
+}
 
 public interface ICreateCrud
 {
     Task AddNews(CreateNewsCrudDto paramsDto);
-    Task AddImage(CreateImageCrudDto paramsDto);
+    Task AddImagesToNews(CreateImageCrudDto paramsDto);
     Task AddNewsContentImage(CreateContentImageCrudDto paramsDto);
     Task AddNewsContentText(CreateContentTextCrudDto paramsDto);
     Task<OrderCreationResult> CreateOrder(CreateOrderParamsCrudDto paramsDto);
@@ -166,7 +177,7 @@ public class CreateCrud : ICreateCrud
         });
     }
 
-    public async Task AddImage(CreateImageCrudDto paramsDto)
+    public async Task AddImagesToNews(CreateImageCrudDto paramsDto)
     {
         await _sessionIterator.ExecuteAsync(async context =>
         {
@@ -456,5 +467,55 @@ public async Task<OrderCreationResult> CreateOrder(CreateOrderParamsCrudDto para
             };
             await context.Database.ExecuteSqlRawAsync(commandText, parameters);
         });
+    }
+
+    public async Task AddImagesToProduct(AddProductImage paramsDto)
+    {
+        try{
+        await _sessionIterator.ExecuteAsync(async context =>
+        {
+            var commandText = @"
+                DO $$
+                DECLARE
+                    _image_ids UUID[] := ARRAY[];
+                    _image_urls TEXT[] := ARRAY[];
+                    _image_alts TEXT[] := ARRAY[];
+                BEGIN
+                    IF (SELECT COUNT(*) FROM products WHERE id = @ProductId) = 0 THEN
+                        RAISE EXCEPTION 'Product not found';
+                    END IF;
+
+                    SELECT 
+                        array_agg(image.Id), 
+                        array_agg(image.ImageUrl), 
+                        array_agg(image.Alt)
+                    INTO
+                        _image_ids,
+                        _image_urls,
+                        _image_alts
+                    FROM 
+                        unnest(@Images) AS image(Id, ImageUrl, Alt);
+
+                    INSERT INTO images (id, image_url, alt)
+                    SELECT unnest(_image_ids), unnest(_image_urls), unnest(_image_alts);
+
+                    INSERT INTO product_image_relationship (id, image_id, fk_product_id)
+                    SELECT uuid_generate_v4(), unnest(_image_ids), @ProductId;
+                END $$;
+            ";
+            var imageArray = paramsDto.Images.Select(image => new
+            {
+                image.Id,
+                image.ImageUrl,
+                image.Alt
+            }).ToArray();
+            var parameters = new[]
+            {
+                new NpgsqlParameter("@ProductId", paramsDto.ProductId),
+                new NpgsqlParameter("@Images", imageArray)
+            };
+            await context.Database.ExecuteSqlRawAsync(commandText, parameters);
+        });
+        }catch{throw;}   
     }
 }
